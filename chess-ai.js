@@ -6,14 +6,133 @@ const PIECE_VALUES = {
     ' ': 0
 };
 
-// Simple board evaluation function
+// Advanced Piece-Square Tables (PSTs) to reward positional play
+const PAWN_PST = [
+    [0,  0,  0,  0,  0,  0,  0,  0],
+    [50, 50, 50, 50, 50, 50, 50, 50],
+    [10, 10, 20, 30, 30, 20, 10, 10],
+    [5,  5, 10, 25, 25, 10,  5,  5],
+    [0,  0,  0, 20, 20,  0,  0,  0],
+    [5, -5,-10,  0,  0,-10, -5,  5],
+    [5, 10, 10,-20,-20, 10, 10,  5],
+    [0,  0,  0,  0,  0,  0,  0,  0]
+];
+
+const KNIGHT_PST = [
+    [-50,-40,-30,-30,-30,-30,-40,-50],
+    [-40,-20,  0,  0,  0,  0,-20,-40],
+    [-30,  0, 10, 15, 15, 10,  0,-30],
+    [-30,  5, 15, 20, 20, 15,  5,-30],
+    [-30,  0, 15, 20, 20, 15,  0,-30],
+    [-30,  5, 10, 15, 15, 10,  5,-30],
+    [-40,-20,  0,  5,  5,  0,-20,-40],
+    [-50,-40,-30,-30,-30,-30,-40,-50]
+];
+
+const BISHOP_PST = [
+    [-20,-10,-10,-10,-10,-10,-10,-20],
+    [-10,  0,  0,  0,  0,  0,  0,-10],
+    [-10,  0,  5, 10, 10,  5,  0,-10],
+    [-10,  5,  5, 10, 10,  5,  5,-10],
+    [-10,  0, 10, 10, 10, 10,  0,-10],
+    [-10, 10, 10, 10, 10, 10, 10,-10],
+    [-10,  5,  0,  0,  0,  0,  5,-10],
+    [-20,-10,-10,-10,-10,-10,-10,-20]
+];
+
+const ROOK_PST = [
+    [0,  0,  0,  0,  0,  0,  0,  0],
+    [5, 10, 10, 10, 10, 10, 10,  5],
+    [-5,  0,  0,  0,  0,  0,  0, -5],
+    [-5,  0,  0,  0,  0,  0,  0, -5],
+    [-5,  0,  0,  0,  0,  0,  0, -5],
+    [-5,  0,  0,  0,  0,  0,  0, -5],
+    [-5,  0,  0,  0,  0,  0,  0, -5],
+    [0,  0,  0,  5,  5,  0,  0,  0]
+];
+
+const QUEEN_PST = [
+    [-20,-10,-10, -5, -5,-10,-10,-20],
+    [-10,  0,  0,  0,  0,  0,  0,-10],
+    [-10,  0,  5,  5,  5,  5,  0,-10],
+    [-5,  0,  5,  5,  5,  5,  0, -5],
+    [0,  0,  5,  5,  5,  5,  0, -5],
+    [-10,  5,  5,  5,  5,  5,  0,-10],
+    [-10,  0,  5,  0,  0,  5,  0,-10],
+    [-20,-10,-10, -5, -5,-10,-10,-20]
+];
+
+const KING_PST = [
+    [-30,-40,-40,-50,-50,-40,-40,-30],
+    [-30,-40,-40,-50,-50,-40,-40,-30],
+    [-30,-40,-40,-50,-50,-40,-40,-30],
+    [-30,-40,-40,-50,-50,-40,-40,-30],
+    [-20,-30,-30,-40,-40,-30,-30,-20],
+    [-10,-20,-20,-20,-20,-20,-20,-10],
+    [20, 20,  0,  0,  0,  0, 20, 20],
+    [20, 30, 10,  0,  0, 10, 30, 20]
+];
+
+const PST_TABLES = {
+    'P': PAWN_PST,
+    'N': KNIGHT_PST,
+    'B': BISHOP_PST,
+    'R': ROOK_PST,
+    'Q': QUEEN_PST,
+    'K': KING_PST
+};
+
+// Advanced evaluation incorporating material and piece-square tables
 export function evaluateBoard(board) {
     let score = 0;
     for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
-            score += PIECE_VALUES[board[r][c]];
+            const piece = board[r][c];
+            if (piece !== ' ') {
+                const value = PIECE_VALUES[piece];
+                score += value;
+
+                const upperPiece = piece.toUpperCase();
+                const pstTable = PST_TABLES[upperPiece];
+                if (pstTable) {
+                    const isWhite = (piece === upperPiece);
+                    if (isWhite) {
+                        score += pstTable[r][c];
+                    } else {
+                        score -= pstTable[7 - r][c];
+                    }
+                }
+            }
         }
     }
+    return score;
+}
+
+// Move Ordering Heuristics (Checks, captures, promotions sorted first)
+export function scoreMove(board, move, currentPlayerColor) {
+    let score = 0;
+    const piece = board[move.startRow][move.startCol];
+    const target = board[move.endRow][move.endCol];
+
+    // Capture heuristic (MVV-LVA: Most Valuable Victim - Least Valuable Assault)
+    if (target !== ' ') {
+        score += 10000 + (Math.abs(PIECE_VALUES[target]) - Math.abs(PIECE_VALUES[piece]) / 100);
+    }
+
+    // Promotion heuristic
+    if (piece.toUpperCase() === 'P' && (move.endRow === 0 || move.endRow === 7)) {
+        score += 8000;
+    }
+
+    // Positional improvement differential (PST score change)
+    const pstTable = PST_TABLES[piece.toUpperCase()];
+    if (pstTable) {
+        const isWhite = (currentPlayerColor === 'white');
+        const oldPst = isWhite ? pstTable[move.startRow][move.startCol] : pstTable[7 - move.startRow][move.startCol];
+        const newPst = isWhite ? pstTable[move.endRow][move.endCol] : pstTable[7 - move.endRow][move.endCol];
+        score += (newPst - oldPst) * 2;
+    }
+
     return score;
 }
 
@@ -62,6 +181,9 @@ export function minimax(board, depth, alpha, beta, maximizingPlayer, aiColor) {
         }
     }
 
+    // Sort moves to evaluate high-impact moves first
+    allPossibleMoves.sort((a, b) => scoreMove(board, b, currentPlayerColor) - scoreMove(board, a, currentPlayerColor));
+
     if (maximizingPlayer) {
         let maxEval = -Infinity;
         for (const move of allPossibleMoves) {
@@ -89,7 +211,7 @@ export function minimax(board, depth, alpha, beta, maximizingPlayer, aiColor) {
     }
 }
 
-export function findBestMove(board, aiColor, depth = 2) {
+export function findBestMove(board, aiColor, depth = 4) {
     let bestMove = null;
     let bestValue = -Infinity; // AI aims to maximize its score (positive for AI, negative for opponent)
     const currentPlayerColor = aiColor;
@@ -100,8 +222,9 @@ export function findBestMove(board, aiColor, depth = 2) {
             allPossibleMoves = allPossibleMoves.concat(getLegalMoves(board, r, c, currentPlayerColor));
         }
     }
-    // Shuffle moves to add some randomness, especially for equally good moves
-    allPossibleMoves.sort(() => Math.random() - 0.5);
+
+    // Sort moves to speed up the root level search and cut off bad branches instantly
+    allPossibleMoves.sort((a, b) => scoreMove(board, b, currentPlayerColor) - scoreMove(board, a, currentPlayerColor));
 
     for (const move of allPossibleMoves) {
         const { newBoard } = applyMove(board, move);

@@ -505,6 +505,25 @@
             100% { transform: scale(1.15); opacity: 1; }
         }
 
+        /* Neon Spinner */
+        .neon-spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 2px solid transparent;
+            border-top-color: var(--neon-pink);
+            border-right-color: var(--neon-pink);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-left: 10px;
+            box-shadow: 0 0 10px var(--neon-pink);
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
         /* Game Over Overlay */
         #game-over-overlay {
             display: none;
@@ -743,7 +762,7 @@
                 whiteStatus.textContent = "COMMAND READY";
                 blackStatus.textContent = "AWAITING HUMAN";
             } else {
-                statusDisplay.innerHTML = `<span class="neon-text-pink">AI Calculating</span>`;
+                statusDisplay.innerHTML = `<span class="neon-text-pink">AI Calculating <span class="neon-spinner"></span></span>`;
                 playerWhiteCard.classList.remove('active');
                 playerBlackCard.classList.add('active');
                 whiteStatus.textContent = "WAITING FOR AI";
@@ -857,7 +876,7 @@
         }
 
         async function makeAIMove() {
-            statusDisplay.innerHTML = `<span class="neon-text-pink">AI Calculating...</span>`;
+            statusDisplay.innerHTML = `<span class="neon-text-pink">AI Calculating <span class="neon-spinner"></span></span>`;
             // Delay to make AI thinking visible
             await new Promise(resolve => setTimeout(resolve, 800));
 
