@@ -1,4 +1,4 @@
-import { getPieceColor, getLegalMoves } from './chess-logic.js';
+import { getPieceColor, getLegalMoves, isKingInCheck } from './chess-logic.js';
 
 const PIECE_VALUES = {
     'P': 100, 'N': 320, 'B': 330, 'R': 500, 'Q': 900, 'K': 20000, // White pieces
@@ -52,8 +52,14 @@ export function minimax(board, depth, alpha, beta, maximizingPlayer, aiColor) {
     }
 
     if (allPossibleMoves.length === 0) {
-        // Simple stalemate/checkmate detection: if no legal moves, it's a draw or loss
-        return evaluateBoard(board);
+        const inCheck = isKingInCheck(board, currentPlayerColor);
+        if (inCheck) {
+            // Checkmate: return very high/low score depending on which player is checkmated
+            return maximizingPlayer ? (-500000 - depth) : (500000 + depth);
+        } else {
+            // Stalemate: return neutral score
+            return 0;
+        }
     }
 
     if (maximizingPlayer) {

@@ -504,6 +504,71 @@
             0% { transform: scale(0.9); opacity: 0.7; }
             100% { transform: scale(1.15); opacity: 1; }
         }
+
+        /* Game Over Overlay */
+        #game-over-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(2, 2, 5, 0.95);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            gap: 25px;
+            backdrop-filter: blur(15px);
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        #overlay-text {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 3rem;
+            font-weight: 900;
+            letter-spacing: 2px;
+            text-align: center;
+            animation: flash-neon 1.5s infinite;
+        }
+
+        .btn-restart {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.2rem;
+            font-weight: bold;
+            letter-spacing: 1px;
+            padding: 12px 30px;
+            background: transparent;
+            border: 2px solid var(--neon-cyan);
+            color: var(--neon-cyan);
+            cursor: pointer;
+            box-shadow: var(--glow-cyan);
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-restart:hover {
+            background: var(--neon-cyan);
+            color: #000;
+            box-shadow: 0 0 25px var(--neon-cyan);
+            transform: scale(1.05);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes flash-neon {
+            0%, 100% {
+                color: var(--neon-pink);
+                text-shadow: var(--glow-pink);
+            }
+            50% {
+                color: var(--neon-cyan);
+                text-shadow: var(--glow-cyan);
+            }
+        }
     </style>
 </head>
 <body>
@@ -561,10 +626,15 @@
         </div>
     </div>
 
+    <div id="game-over-overlay">
+        <h1 id="overlay-text"></h1>
+        <button class="btn-restart" id="btn-restart">RESTART TERMINAL</button>
+    </div>
+
     <script type="module" src="./chess-logic.js"></script>
     <script type="module" src="./chess-ai.js"></script>
     <script type="module">
-        import { getPieceColor, getLegalMoves, pieceUnicode } from './chess-logic.js';
+        import { getPieceColor, getLegalMoves, pieceUnicode, isKingInCheck } from './chess-logic.js';
         import { findBestMove, applyMove } from './chess-ai.js';
 
         const chessboard = document.getElementById('chessboard');
@@ -574,6 +644,35 @@
         const whiteStatus = playerWhiteCard.querySelector('.player-status');
         const blackStatus = playerBlackCard.querySelector('.player-status');
         const tacticalLog = document.getElementById('tactical-log');
+
+        const gameOverOverlay = document.getElementById('game-over-overlay');
+        const overlayText = document.getElementById('overlay-text');
+        const btnRestart = document.getElementById('btn-restart');
+
+        btnRestart.addEventListener('click', () => {
+            location.reload();
+        });
+
+        function showGameOverOverlay(text) {
+            overlayText.textContent = text;
+            gameOverOverlay.style.display = 'flex';
+            addLog(`GAME OVER: ${text}`, 'alert');
+        }
+
+        function hasAnyLegalMoves(boardState, playerColor) {
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const piece = boardState[r][c];
+                    if (piece !== ' ' && getPieceColor(piece) === playerColor) {
+                        const moves = getLegalMoves(boardState, r, c, playerColor);
+                        if (moves.length > 0) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
 
         // Initial chess board state (FEN-like representation for easy setup)
         // Uppercase for White, lowercase for Black
@@ -738,6 +837,18 @@
             // Switch player
             currentPlayer = (currentPlayer === 'white' ? 'black' : 'white');
             updateStatus();
+
+            // Check for Endgame
+            if (!hasAnyLegalMoves(board, currentPlayer)) {
+                const inCheck = isKingInCheck(board, currentPlayer);
+                if (inCheck) {
+                    const winningColor = currentPlayer === 'white' ? 'Black' : 'White';
+                    showGameOverOverlay(`CHECKMATE - ${winningColor.toUpperCase()} Wins!`);
+                } else {
+                    showGameOverOverlay("DRAW BY STALEMATE");
+                }
+                return;
+            }
 
             if (currentPlayer === aiPlayer) {
                 await new Promise(resolve => setTimeout(resolve, 500)); // AI thinking delay

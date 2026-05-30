@@ -92,6 +92,58 @@ export function isValidMove(board, startRow, startCol, endRow, endCol, pieceChar
     }
 }
 
+export function isKingInCheck(board, color) {
+    let kingRow = -1;
+    let kingCol = -1;
+    const kingChar = color === 'white' ? 'K' : 'k';
+
+    // Find King
+    for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+            if (board[r][c] === kingChar) {
+                kingRow = r;
+                kingCol = c;
+                break;
+            }
+        }
+        if (kingRow !== -1) break;
+    }
+
+    if (kingRow === -1) return false;
+
+    const opponentColor = color === 'white' ? 'black' : 'white';
+
+    for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+            const pieceChar = board[r][c];
+            if (pieceChar !== ' ' && getPieceColor(pieceChar) === opponentColor) {
+                if (isValidMove(board, r, c, kingRow, kingCol, pieceChar, opponentColor)) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+function simulateAndCheck(board, startRow, startCol, endRow, endCol, color) {
+    const newBoard = board.map(row => [...row]);
+    const pieceChar = newBoard[startRow][startCol];
+    newBoard[endRow][endCol] = pieceChar;
+    newBoard[startRow][startCol] = ' ';
+
+    // Simplified Pawn promotion in simulation
+    if (pieceChar.toUpperCase() === 'P') {
+        if (color === 'white' && endRow === 0) {
+            newBoard[endRow][endCol] = 'Q';
+        } else if (color === 'black' && endRow === 7) {
+            newBoard[endRow][endCol] = 'q';
+        }
+    }
+
+    return isKingInCheck(newBoard, color);
+}
+
 export function getLegalMoves(board, row, col, currentPlayerColor) {
     const legalMoves = [];
     const pieceChar = board[row][col];
@@ -102,9 +154,11 @@ export function getLegalMoves(board, row, col, currentPlayerColor) {
     for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
             if (isValidMove(board, row, col, r, c, pieceChar, currentPlayerColor)) {
-                const targetPieceChar = board[r][c];
-                const isCapture = targetPieceChar !== ' ';
-                legalMoves.push({ startRow: row, startCol: col, endRow: r, endCol: c, isCapture: isCapture, piece: pieceChar });
+                if (!simulateAndCheck(board, row, col, r, c, currentPlayerColor)) {
+                    const targetPieceChar = board[r][c];
+                    const isCapture = targetPieceChar !== ' ';
+                    legalMoves.push({ startRow: row, startCol: col, endRow: r, endCol: c, isCapture: isCapture, piece: pieceChar });
+                }
             }
         }
     }
