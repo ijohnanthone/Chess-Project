@@ -113,7 +113,12 @@
         <div id="chessboard"></div>
     </div>
 
-    <script>
+    <script type="module" src="./chess-logic.js"></script>
+    <script type="module" src="./chess-ai.js"></script>
+    <script type="module">
+        import { getPieceColor, getLegalMoves, pieceUnicode } from './chess-logic.js';
+        import { findBestMove, applyMove } from './chess-ai.js';
+
         const chessboard = document.getElementById('chessboard');
         const statusDisplay = document.getElementById('status');
 
@@ -130,14 +135,9 @@
             ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R']
         ];
 
-        let selectedPiece = null; // { piece: 'P', row: 6, col: 0 }
+        let selectedPiece = null; // { piece: 'P', startRow: 6, startCol: 0 }
         let currentPlayer = 'white'; // 'white' or 'black'
-
-        const pieceUnicode = {
-            'K': '&#9812;', 'Q': '&#9813;', 'R': '&#9814;', 'B': '&#9815;', 'N': '&#9816;', 'P': '&#9817;',
-            'k': '&#9818;', 'q': '&#9819;', 'r': '&#9820;', 'b': '&#9821;', 'n': '&#9822;', 'p': '&#9823;',
-            ' ': ''
-        };
+        const aiPlayer = 'black'; // AI plays as black
 
         function initializeBoard() {
             chessboard.innerHTML = ''; // Clear existing board
@@ -173,123 +173,43 @@
             document.querySelectorAll('.square.legal-move').forEach(s => s.classList.remove('legal-move', 'capture'));
         }
 
-        function getPieceColor(pieceChar) {
-            if (pieceChar === ' ') return null;
-            return pieceChar === pieceChar.toUpperCase() ? 'white' : 'black';
-        }
-
-        function isValidMove(startRow, startCol, endRow, endCol, piece) {
-            // Simplified move validation. Does not account for blocking, check, etc.
-            // This primarily defines the *pattern* of movement.
-            const pieceChar = piece.piece;
-            const pieceColor = getPieceColor(pieceChar);
-            const targetPieceChar = board[endRow][endCol];
-            const targetPieceColor = getPieceColor(targetPieceChar);
-
-            // Cannot capture own piece
-            if (targetPieceColor === pieceColor) {
-                return false;
-            }
-
-            // Delta rows and columns
-            const dr = endRow - startRow;
-            const dc = endCol - startCol;
-
-            switch (pieceChar.toUpperCase()) {
-                case 'P': // Pawn
-                    const direction = pieceColor === 'white' ? -1 : 1; // White moves up, Black moves down
-                    if (dc === 0) { // Straight move
-                        if (targetPieceChar === ' ') { // Must be empty
-                            if (dr === direction) return true; // One step
-                            if ( (pieceColor === 'white' && startRow === 6) || (pieceColor === 'black' && startRow === 1) ) {
-                                if (dr === 2 * direction && board[startRow + direction][startCol] === ' ') return true; // Two steps on first move
-                            }
-                        }
-                    } else if (Math.abs(dc) === 1 && dr === direction) { // Diagonal capture
-                        if (targetPieceChar !== ' ') return true; // Must capture
-                    }
-                    return false;
-                case 'R': // Rook
-                    if (dr === 0 || dc === 0) {
-                        return !isPathBlocked(startRow, startCol, endRow, endCol);
-                    }
-                    return false;
-                case 'N': // Knight
-                    return (Math.abs(dr) === 2 && Math.abs(dc) === 1) || (Math.abs(dr) === 1 && Math.abs(dc) === 2);
-                case 'B': // Bishop
-                    if (Math.abs(dr) === Math.abs(dc)) {
-                        return !isPathBlocked(startRow, startCol, endRow, endCol);
-                    }
-                    return false;
-                case 'Q': // Queen
-                    if (dr === 0 || dc === 0 || Math.abs(dr) === Math.abs(dc)) {
-                        return !isPathBlocked(startRow, startCol, endRow, endCol);
-                    }
-                    return false;
-                case 'K': // King
-                    return Math.abs(dr) <= 1 && Math.abs(dc) <= 1;
-                default:
-                    return false;
-            }
-        }
-
-        // Checks if any piece blocks the path for Rook, Bishop, Queen
-        function isPathBlocked(startRow, startCol, endRow, endCol) {
-            const dr = Math.sign(endRow - startRow);
-            const dc = Math.sign(endCol - startCol);
-            let r = startRow + dr;
-            let c = startCol + dc;
-
-            while (r !== endRow || c !== endCol) {
-                if (board[r][c] !== ' ') {
-                    return true;
-                }
-                r += dr;
-                c += dc;
-            }
-            return false;
-        }
-
-        function getLegalMoves(row, col, piece) {
-            const legalMoves = [];
-            for (let r = 0; r < 8; r++) {
-                for (let c = 0; c < 8; c++) {
-                    if (isValidMove(row, col, r, c, piece)) {
-                        const targetPieceChar = board[r][c];
-                        const isCapture = targetPieceChar !== ' ';
-                        legalMoves.push({ row: r, col: c, isCapture: isCapture });
-                    }
-                }
-            }
-            return legalMoves;
-        }
-
         function handleSquareClick(row, col) {
+            if (currentPlayer === aiPlayer) return; // Prevent human interaction during AI turn
+
             const clickedPieceChar = board[row][col];
             const clickedPieceColor = getPieceColor(clickedPieceChar);
 
             if (selectedPiece) {
                 // A piece is already selected
-                if (row === selectedPiece.row && col === selectedPiece.col) {
+                if (row === selectedPiece.startRow && col === selectedPiece.startCol) {
                     // Clicked the same piece again, deselect
                     selectedPiece = null;
                     clearHighlights();
-                } else if (clickedPieceColor === currentPlayer) {
+                } else if (clickedPieceChar !== ' ' && clickedPieceColor === currentPlayer) {
                     // Clicked another piece of the current player, select new piece
-                    selectedPiece = { piece: clickedPieceChar, row: row, col: col };
+                    selectedPiece = { piece: clickedPieceChar, startRow: row, startCol: col };
                     clearHighlights();
                     highlightMoves(selectedPiece);
                 } else {
                     // Attempt to move or capture
-                    const currentLegalMoves = getLegalMoves(selectedPiece.row, selectedPiece.col, selectedPiece);
-                    const isLegal = currentLegalMoves.some(move => move.row === row && move.col === col);
+                    const currentLegalMoves = getLegalMoves(board, selectedPiece.startRow, selectedPiece.startCol, currentPlayer);
+                    const potentialMove = {
+                        startRow: selectedPiece.startRow,
+                        startCol: selectedPiece.startCol,
+                        endRow: row,
+                        endCol: col,
+                        piece: selectedPiece.piece // Pass the piece character
+                    };
+
+                    const isLegal = currentLegalMoves.some(move =>
+                        move.startRow === potentialMove.startRow &&
+                        move.startCol === potentialMove.startCol &&
+                        move.endRow === potentialMove.endRow &&
+                        move.endCol === potentialMove.endCol
+                    );
 
                     if (isLegal) {
-                        movePiece(selectedPiece.row, selectedPiece.col, row, col);
-                        selectedPiece = null;
-                        clearHighlights();
-                        currentPlayer = (currentPlayer === 'white' ? 'black' : 'white');
-                        updateStatus();
+                        makeMove(potentialMove);
                     } else {
                         // Invalid move, deselect
                         selectedPiece = null;
@@ -300,7 +220,7 @@
                 // No piece selected
                 if (clickedPieceChar !== ' ' && clickedPieceColor === currentPlayer) {
                     // Select a piece belonging to the current player
-                    selectedPiece = { piece: clickedPieceChar, row: row, col: col };
+                    selectedPiece = { piece: clickedPieceChar, startRow: row, startCol: col };
                     highlightMoves(selectedPiece);
                 }
             }
@@ -308,14 +228,14 @@
 
         function highlightMoves(pieceData) {
             clearHighlights();
-            const startSquare = document.querySelector(`[data-row="${pieceData.row}"][data-col="${pieceData.col}"]`);
+            const startSquare = document.querySelector(`[data-row="${pieceData.startRow}"][data-col="${pieceData.startCol}"]`);
             if (startSquare) {
                 startSquare.classList.add('selected');
             }
 
-            const moves = getLegalMoves(pieceData.row, pieceData.col, pieceData);
+            const moves = getLegalMoves(board, pieceData.startRow, pieceData.startCol, currentPlayer);
             moves.forEach(move => {
-                const targetSquare = document.querySelector(`[data-row="${move.row}"][data-col="${move.col}"]`);
+                const targetSquare = document.querySelector(`[data-row="${move.endRow}"][data-col="${move.endCol}"]`);
                 if (targetSquare) {
                     targetSquare.classList.add('legal-move');
                     if (move.isCapture) {
@@ -325,15 +245,48 @@
             });
         }
 
-        function movePiece(startRow, startCol, endRow, endCol) {
-            const pieceToMove = board[startRow][startCol];
-            board[endRow][endCol] = pieceToMove;
-            board[startRow][startCol] = ' ';
+        async function makeMove(move) {
+            // Apply move to the board
+            const { newBoard } = applyMove(board, move); // Use applyMove from AI for consistency
+            board = newBoard; // Update the main board
+
+            selectedPiece = null;
+            clearHighlights();
             initializeBoard(); // Re-render the board
+
+            // Switch player
+            currentPlayer = (currentPlayer === 'white' ? 'black' : 'white');
+            updateStatus();
+
+            if (currentPlayer === aiPlayer) {
+                await new Promise(resolve => setTimeout(resolve, 500)); // AI thinking delay
+                makeAIMove();
+            }
+        }
+
+        async function makeAIMove() {
+            statusDisplay.textContent = "AI (Black) is thinking...";
+            // Delay to make AI thinking visible
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            const bestMove = findBestMove(board, aiPlayer);
+
+            if (bestMove) {
+                makeMove(bestMove); // AI makes its move
+            } else {
+                console.log("AI found no legal moves. Game over or stalemate!");
+                statusDisplay.textContent = "AI has no legal moves. Game Over!";
+            }
         }
 
         // Initialize the board when the script loads
         initializeBoard();
+        // If AI starts, trigger AI move (e.g., if AI is white)
+        // In this setup, AI is black, so white (human) moves first.
+        // If AI was white:
+        // if (currentPlayer === aiPlayer) {
+        //     makeAIMove();
+        // }
 
     </script>
 </body>
