@@ -3,79 +3,200 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>2D Chess Game</title>
+    <title>NEO-CHESS // Cyber Chess Battleground</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg-primary: #05050a;
+            --bg-secondary: rgba(10, 10, 20, 0.85);
+            --border-neon-cyan: rgba(0, 240, 255, 0.4);
+            --border-neon-pink: rgba(255, 0, 127, 0.4);
+            --glow-cyan: 0 0 15px rgba(0, 240, 255, 0.6);
+            --glow-pink: 0 0 15px rgba(255, 0, 127, 0.6);
+            --neon-cyan: #00f0ff;
+            --neon-pink: #ff007f;
+            --text-primary: #f0f0f5;
+            --panel-border: rgba(255, 255, 255, 0.08);
+        }
+
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+            background-color: var(--bg-primary);
+            background-image: 
+                radial-gradient(circle at 20% 30%, rgba(0, 240, 255, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 80% 70%, rgba(255, 0, 127, 0.05) 0%, transparent 40%),
+                linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 100%, 100% 100%, 100% 4px, 6px 100%;
+            color: var(--text-primary);
             display: flex;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
             margin: 0;
-            background-color: #333;
-            color: #eee;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-x: hidden;
         }
 
         #game-container {
             display: flex;
             flex-direction: column;
-            align-items: center;
+            width: 100%;
+            max-width: 1100px;
             gap: 20px;
+            backdrop-filter: blur(12px);
+            background: rgba(8, 8, 16, 0.6);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), inset 0 0 40px rgba(255, 255, 255, 0.02);
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px dashed rgba(255, 255, 255, 0.1);
+            padding-bottom: 15px;
+            margin-bottom: 10px;
+        }
+
+        h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2rem;
+            font-weight: 900;
+            margin: 0;
+            background: linear-gradient(90deg, var(--neon-cyan), var(--neon-pink));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 30px rgba(0, 240, 255, 0.2);
+            letter-spacing: 2px;
+        }
+
+        .battle-station-status {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.95rem;
+            color: #888;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--neon-cyan);
+            border-radius: 50%;
+            box-shadow: var(--glow-cyan);
+            animation: pulse-active 1.5s infinite ease-in-out;
+        }
+
+        .main-layout {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 30px;
+            align-items: start;
+        }
+
+        @media (max-width: 900px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+                justify-items: center;
+            }
+        }
+
+        #chessboard-wrapper {
+            position: relative;
+            padding: 12px;
+            background: linear-gradient(135deg, rgba(0, 240, 255, 0.1) 0%, rgba(255, 0, 127, 0.1) 100%);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.9), inset 0 0 20px rgba(255, 255, 255, 0.05);
         }
 
         #chessboard {
             display: grid;
-            grid-template-columns: repeat(8, 60px);
-            grid-template-rows: repeat(8, 60px);
-            border: 4px solid #8B4513; /* SaddleBrown */
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.7);
+            grid-template-columns: repeat(8, 65px);
+            grid-template-rows: repeat(8, 65px);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 0 25px rgba(0, 0, 0, 0.7);
+            border-radius: 4px;
+            overflow: hidden;
+            background: #020205;
         }
 
         .square {
-            width: 60px;
-            height: 60px;
+            width: 65px;
+            height: 65px;
             display: flex;
             justify-content: center;
             align-items: center;
-            font-size: 40px;
+            position: relative;
             cursor: pointer;
-            transition: background-color 0.2s ease;
-            position: relative; /* For legal move highlight dot */
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .light {
-            background-color: #F0D9B5; /* Light square color */
+            background-color: #161722; /* Cyberpunk dark tile 1 */
+            border: 1px solid rgba(255, 255, 255, 0.01);
         }
 
         .dark {
-            background-color: #B58863; /* Dark square color */
+            background-color: #0d0e15; /* Cyberpunk dark tile 2 */
+            border: 1px solid rgba(255, 255, 255, 0.01);
+        }
+
+        /* Hover enhancement */
+        .square:hover {
+            z-index: 2;
+            background-color: rgba(255, 255, 255, 0.04);
+            filter: brightness(1.2);
         }
 
         .square.selected {
-            background-color: #6aab32 !important; /* Green for selected piece */
+            background-color: rgba(0, 240, 255, 0.15) !important;
+            box-shadow: inset 0 0 15px rgba(0, 240, 255, 0.5), 0 0 10px rgba(0, 240, 255, 0.3);
+            border: 1px solid var(--neon-cyan) !important;
+            z-index: 3;
         }
 
         .square.legal-move {
+            background-color: rgba(0, 240, 255, 0.05) !important;
             cursor: pointer;
-            background-color: rgba(106, 171, 50, 0.5) !important; /* Semi-transparent green for legal move */
+            z-index: 2;
         }
 
         .square.legal-move::after {
             content: '';
             display: block;
-            width: 20px;
-            height: 20px;
+            width: 14px;
+            height: 14px;
             border-radius: 50%;
-            background-color: rgba(0, 0, 0, 0.3); /* Dark dot */
+            background-color: var(--neon-cyan);
+            box-shadow: var(--glow-cyan);
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            pointer-events: none; /* Allows click to pass through to the square */
+            pointer-events: none;
+            transition: transform 0.2s ease;
+            animation: pulse-cyan 2s infinite ease-in-out;
+        }
+
+        .square.legal-move:hover::after {
+            transform: translate(-50%, -50%) scale(1.4);
+        }
+
+        .square.legal-move.capture {
+            background-color: rgba(255, 0, 127, 0.08) !important;
         }
 
         .square.legal-move.capture::after {
-             background-color: rgba(255, 0, 0, 0.3); /* Red dot for capture */
+             background-color: var(--neon-pink);
+             box-shadow: var(--glow-pink);
+             animation: pulse-pink 1.5s infinite ease-in-out;
         }
 
         .piece {
@@ -84,33 +205,360 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            font-size: 40px;
-            user-select: none; /* Prevent text selection */
+            font-size: 42px;
+            user-select: none;
+            z-index: 1;
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
+            animation: spawnPiece 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+        }
+
+        @keyframes spawnPiece {
+            0% {
+                opacity: 0;
+                transform: scale(0.4) rotate(-15deg);
+                filter: brightness(2) contrast(1.5);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1) rotate(0deg);
+                filter: brightness(1) contrast(1);
+            }
         }
 
         .piece.white {
-            color: #FFF;
-            text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+            color: #ffffff;
+            text-shadow: 
+                0 0 2px #fff,
+                0 0 10px var(--neon-cyan),
+                0 0 20px rgba(0, 240, 255, 0.5);
         }
 
         .piece.black {
-            color: #000;
-            text-shadow: -1px -1px 0 #FFF, 1px -1px 0 #FFF, -1px 1px 0 #FFF, 1px 1px 0 #FFF;
+            color: #1a1a24;
+            text-shadow: 
+                0 0 2px #fff,
+                0 0 10px var(--neon-pink),
+                0 0 20px rgba(255, 0, 127, 0.6);
+        }
+
+        /* Sidebar Styling */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            width: 100%;
+        }
+
+        .panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+        }
+
+        .panel h2 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            margin: 0 0 15px 0;
+            letter-spacing: 2px;
+            color: #8c90b0;
+            border-left: 3px solid var(--neon-cyan);
+            padding-left: 10px;
+        }
+
+        #status-panel {
+            border: 1px solid var(--border-neon-cyan);
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.05);
         }
 
         #status {
-            font-size: 1.5em;
-            font-weight: bold;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 900;
             text-align: center;
-            margin-top: 10px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .neon-text-cyan {
+            color: var(--neon-cyan);
+            text-shadow: var(--glow-cyan);
+        }
+
+        .neon-text-pink {
+            color: var(--neon-pink);
+            text-shadow: var(--glow-pink);
+        }
+
+        /* Players card view */
+        .players-container {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .player-card {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 12px 18px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .player-card.active {
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .player-card#player-white.active {
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.15);
+        }
+
+        .player-card#player-black.active {
+            border-color: var(--neon-pink);
+            box-shadow: 0 0 15px rgba(255, 0, 127, 0.15);
+        }
+
+        .player-avatar {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: bold;
+            font-size: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .player-card#player-white .player-avatar {
+            color: var(--neon-cyan);
+            background: rgba(0, 240, 255, 0.1);
+            border-color: var(--border-neon-cyan);
+        }
+
+        .player-card#player-white.active .player-avatar {
+            box-shadow: var(--glow-cyan);
+            background: var(--neon-cyan);
+            color: #000;
+        }
+
+        .player-card#player-black .player-avatar {
+            color: var(--neon-pink);
+            background: rgba(255, 0, 127, 0.1);
+            border-color: var(--border-neon-pink);
+        }
+
+        .player-card#player-black.active .player-avatar {
+            box-shadow: var(--glow-pink);
+            background: var(--neon-pink);
+            color: #fff;
+        }
+
+        .player-info {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+        }
+
+        .player-name {
+            font-weight: 700;
+            font-size: 1.1rem;
+            letter-spacing: 0.5px;
+        }
+
+        .player-status {
+            font-size: 0.8rem;
+            color: #666;
+            letter-spacing: 1px;
+            font-weight: 700;
+            text-transform: uppercase;
+            transition: color 0.3s ease;
+        }
+
+        .player-card.active .player-status {
+            color: #ccc;
+        }
+
+        .player-card#player-white.active .player-status {
+            color: var(--neon-cyan);
+        }
+
+        .player-card#player-black.active .player-status {
+            color: var(--neon-pink);
+        }
+
+        /* Turn visual pulse light */
+        .turn-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: transparent;
+            transition: all 0.3s ease;
+        }
+
+        .player-card#player-white.active .turn-indicator {
+            background-color: var(--neon-cyan);
+            box-shadow: var(--glow-cyan);
+            animation: pulse-active 1s infinite alternate;
+        }
+
+        .player-card#player-black.active .turn-indicator {
+            background-color: var(--neon-pink);
+            box-shadow: var(--glow-pink);
+            animation: pulse-active-pink 1s infinite alternate;
+        }
+
+        /* Tactical Terminal Log */
+        .terminal-panel {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #tactical-log {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.85rem;
+            height: 120px;
+            overflow-y: auto;
+            border-radius: 6px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        /* Scrollbar styling */
+        #tactical-log::-webkit-scrollbar {
+            width: 4px;
+        }
+        #tactical-log::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #tactical-log::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+        }
+
+        .log-entry {
+            line-height: 1.3;
+        }
+
+        .log-entry.system {
+            color: #8c90b0;
+        }
+
+        .log-entry.white-move {
+            color: var(--neon-cyan);
+        }
+
+        .log-entry.black-move {
+            color: var(--neon-pink);
+        }
+
+        .log-entry.alert {
+            color: #ff9f00;
+            font-weight: bold;
+        }
+
+        /* Animations */
+        @keyframes pulse-cyan {
+            0%, 100% { box-shadow: 0 0 5px rgba(0, 240, 255, 0.4); }
+            50% { box-shadow: 0 0 20px rgba(0, 240, 255, 0.9); }
+        }
+
+        @keyframes pulse-pink {
+            0%, 100% { box-shadow: 0 0 5px rgba(255, 0, 127, 0.4); }
+            50% { box-shadow: 0 0 20px rgba(255, 0, 127, 0.9); }
+        }
+
+        @keyframes pulse-active {
+            0% { transform: scale(0.9); opacity: 0.7; }
+            100% { transform: scale(1.15); opacity: 1; }
+        }
+
+        @keyframes pulse-active-pink {
+            0% { transform: scale(0.9); opacity: 0.7; }
+            100% { transform: scale(1.15); opacity: 1; }
         }
     </style>
 </head>
 <body>
     <div id="game-container">
-        <h1>2D Chess</h1>
-        <div id="status">White to move</div>
-        <div id="chessboard"></div>
+        <header>
+            <h1>NEO-CHESS BATTLEGROUND</h1>
+            <div class="battle-station-status">
+                <div class="pulse-dot"></div>
+                STATION ONLINE
+            </div>
+        </header>
+        
+        <div class="main-layout">
+            <div id="chessboard-wrapper">
+                <div id="chessboard"></div>
+            </div>
+            
+            <div class="sidebar">
+                <div id="status-panel" class="panel">
+                    <h2>Operational Turn</h2>
+                    <div id="status">White to move</div>
+                </div>
+                
+                <div class="panel">
+                    <h2>Combatants</h2>
+                    <div class="players-container">
+                        <div id="player-white" class="player-card active">
+                            <div class="player-avatar">H</div>
+                            <div class="player-info">
+                                <span class="player-name">Human Commander</span>
+                                <span class="player-status">READY TO COMMAND</span>
+                            </div>
+                            <div class="turn-indicator"></div>
+                        </div>
+                        
+                        <div id="player-black" class="player-card">
+                            <div class="player-avatar">AI</div>
+                            <div class="player-info">
+                                <span class="player-name">Deep-Minimax V2</span>
+                                <span class="player-status">AWAITING COMM</span>
+                            </div>
+                            <div class="turn-indicator"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel terminal-panel">
+                    <h2>Tactical Log</h2>
+                    <div id="tactical-log">
+                        <div class="log-entry system">> Terminal initialized.</div>
+                        <div class="log-entry system">> Chess Engine online. Ready.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script type="module" src="./chess-logic.js"></script>
@@ -121,6 +569,11 @@
 
         const chessboard = document.getElementById('chessboard');
         const statusDisplay = document.getElementById('status');
+        const playerWhiteCard = document.getElementById('player-white');
+        const playerBlackCard = document.getElementById('player-black');
+        const whiteStatus = playerWhiteCard.querySelector('.player-status');
+        const blackStatus = playerBlackCard.querySelector('.player-status');
+        const tacticalLog = document.getElementById('tactical-log');
 
         // Initial chess board state (FEN-like representation for easy setup)
         // Uppercase for White, lowercase for Black
@@ -138,6 +591,25 @@
         let selectedPiece = null; // { piece: 'P', startRow: 6, startCol: 0 }
         let currentPlayer = 'white'; // 'white' or 'black'
         const aiPlayer = 'black'; // AI plays as black
+
+        function addLog(message, type = 'system') {
+            const entry = document.createElement('div');
+            entry.classList.add('log-entry', type);
+            entry.textContent = `> ${message}`;
+            tacticalLog.appendChild(entry);
+            tacticalLog.scrollTop = tacticalLog.scrollHeight;
+        }
+
+        function getChessNotation(move) {
+            const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+            const ranks = ['8', '7', '6', '5', '4', '3', '2', '1'];
+            const pieceSymbols = { 'P': '♙', 'N': '♘', 'B': '♗', 'R': '♖', 'Q': '♕', 'K': '♔' };
+            const charUpper = (move.piece || '').toUpperCase();
+            const pieceSymbol = pieceSymbols[charUpper] || charUpper;
+            const startSquare = `${files[move.startCol]}${ranks[move.startRow]}`;
+            const endSquare = `${files[move.endCol]}${ranks[move.endRow]}`;
+            return `${pieceSymbol} [${startSquare} ➔ ${endSquare}]${move.isCapture ? ' ✖ CAPTURED' : ''}`;
+        }
 
         function initializeBoard() {
             chessboard.innerHTML = ''; // Clear existing board
@@ -165,7 +637,19 @@
         }
 
         function updateStatus() {
-            statusDisplay.textContent = `${currentPlayer.charAt(0).toUpperCase() + currentPlayer.slice(1)} to move`;
+            if (currentPlayer === 'white') {
+                statusDisplay.innerHTML = `<span class="neon-text-cyan">Human Turn</span>`;
+                playerWhiteCard.classList.add('active');
+                playerBlackCard.classList.remove('active');
+                whiteStatus.textContent = "COMMAND READY";
+                blackStatus.textContent = "AWAITING HUMAN";
+            } else {
+                statusDisplay.innerHTML = `<span class="neon-text-pink">AI Calculating</span>`;
+                playerWhiteCard.classList.remove('active');
+                playerBlackCard.classList.add('active');
+                whiteStatus.textContent = "WAITING FOR AI";
+                blackStatus.textContent = "THINKING...";
+            }
         }
 
         function clearHighlights() {
@@ -193,23 +677,15 @@
                 } else {
                     // Attempt to move or capture
                     const currentLegalMoves = getLegalMoves(board, selectedPiece.startRow, selectedPiece.startCol, currentPlayer);
-                    const potentialMove = {
-                        startRow: selectedPiece.startRow,
-                        startCol: selectedPiece.startCol,
-                        endRow: row,
-                        endCol: col,
-                        piece: selectedPiece.piece // Pass the piece character
-                    };
-
-                    const isLegal = currentLegalMoves.some(move =>
-                        move.startRow === potentialMove.startRow &&
-                        move.startCol === potentialMove.startCol &&
-                        move.endRow === potentialMove.endRow &&
-                        move.endCol === potentialMove.endCol
+                    const matchedMove = currentLegalMoves.find(move =>
+                        move.startRow === selectedPiece.startRow &&
+                        move.startCol === selectedPiece.startCol &&
+                        move.endRow === row &&
+                        move.endCol === col
                     );
 
-                    if (isLegal) {
-                        makeMove(potentialMove);
+                    if (matchedMove) {
+                        makeMove(matchedMove);
                     } else {
                         // Invalid move, deselect
                         selectedPiece = null;
@@ -246,6 +722,11 @@
         }
 
         async function makeMove(move) {
+            // Log move with piece info
+            const moveNotation = getChessNotation(move);
+            const playerColorClass = getPieceColor(move.piece) === 'white' ? 'white-move' : 'black-move';
+            addLog(moveNotation, playerColorClass);
+
             // Apply move to the board
             const { newBoard } = applyMove(board, move); // Use applyMove from AI for consistency
             board = newBoard; // Update the main board
@@ -265,9 +746,9 @@
         }
 
         async function makeAIMove() {
-            statusDisplay.textContent = "AI (Black) is thinking...";
+            statusDisplay.innerHTML = `<span class="neon-text-pink">AI Calculating...</span>`;
             // Delay to make AI thinking visible
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 800));
 
             const bestMove = findBestMove(board, aiPlayer);
 
@@ -275,7 +756,8 @@
                 makeMove(bestMove); // AI makes its move
             } else {
                 console.log("AI found no legal moves. Game over or stalemate!");
-                statusDisplay.textContent = "AI has no legal moves. Game Over!";
+                addLog("AI Core: No legal moves possible. Battle Concluded.", "alert");
+                statusDisplay.innerHTML = `<span class="neon-text-pink">GAME OVER</span>`;
             }
         }
 
