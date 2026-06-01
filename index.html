@@ -430,6 +430,123 @@
             animation: pulse-active-pink 1s infinite alternate;
         }
 
+        /* Tactical Coach AI Panel Styling */
+        #coach-panel {
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(12, 12, 24, 0.85);
+            transition: all 0.3s ease;
+        }
+
+        #coach-panel.coach-green {
+            border-color: rgba(0, 255, 102, 0.4);
+            box-shadow: 0 0 15px rgba(0, 255, 102, 0.1);
+        }
+
+        #coach-panel.coach-yellow {
+            border-color: rgba(255, 204, 0, 0.4);
+            box-shadow: 0 0 15px rgba(255, 204, 0, 0.1);
+        }
+
+        #coach-panel.coach-red {
+            border-color: rgba(255, 51, 51, 0.4);
+            box-shadow: 0 0 15px rgba(255, 51, 51, 0.1);
+        }
+
+        .coach-badge {
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 900;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            padding: 4px 10px;
+            border-radius: 4px;
+            display: inline-block;
+            margin-bottom: 10px;
+            letter-spacing: 1px;
+            border: 1px solid transparent;
+        }
+
+        .coach-badge.badge-green {
+            background: rgba(0, 255, 102, 0.1);
+            color: #00ff66;
+            border-color: #00ff66;
+            box-shadow: 0 0 10px rgba(0, 255, 102, 0.2);
+        }
+
+        .coach-badge.badge-yellow {
+            background: rgba(255, 204, 0, 0.1);
+            color: #ffcc00;
+            border-color: #ffcc00;
+            box-shadow: 0 0 10px rgba(255, 204, 0, 0.2);
+        }
+
+        .coach-badge.badge-red {
+            background: rgba(255, 51, 51, 0.1);
+            color: #ff3333;
+            border-color: #ff3333;
+            box-shadow: 0 0 10px rgba(255, 51, 51, 0.2);
+        }
+
+        .coach-explanation {
+            font-size: 0.9rem;
+            line-height: 1.4;
+            color: #ccc;
+            font-family: 'Rajdhani', sans-serif;
+        }
+
+        .coach-score {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 8px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .coach-score span {
+            font-weight: bold;
+        }
+
+        .coach-placeholder {
+            font-style: italic;
+            color: #666;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        /* Color-coded move markers styling */
+        .square.legal-move.coach-green::after {
+            background-color: #00ff66 !important;
+            box-shadow: 0 0 10px #00ff66 !important;
+            animation: pulse-green 1.5s infinite ease-in-out !important;
+        }
+
+        .square.legal-move.coach-yellow::after {
+            background-color: #ffcc00 !important;
+            box-shadow: 0 0 10px #ffcc00 !important;
+            animation: pulse-yellow 1.5s infinite ease-in-out !important;
+        }
+
+        .square.legal-move.coach-red::after {
+            background-color: #ff3333 !important;
+            box-shadow: 0 0 10px #ff3333 !important;
+            animation: pulse-red 1.5s infinite ease-in-out !important;
+        }
+
+        @keyframes pulse-green {
+            0%, 100% { box-shadow: 0 0 3px rgba(0, 255, 102, 0.4); transform: translate(-50%, -50%) scale(0.9); }
+            50% { box-shadow: 0 0 12px rgba(0, 255, 102, 0.9); transform: translate(-50%, -50%) scale(1.1); }
+        }
+
+        @keyframes pulse-yellow {
+            0%, 100% { box-shadow: 0 0 3px rgba(255, 204, 0, 0.4); transform: translate(-50%, -50%) scale(0.9); }
+            50% { box-shadow: 0 0 12px rgba(255, 204, 0, 0.9); transform: translate(-50%, -50%) scale(1.1); }
+        }
+
+        @keyframes pulse-red {
+            0%, 100% { box-shadow: 0 0 3px rgba(255, 51, 51, 0.4); transform: translate(-50%, -50%) scale(0.9); }
+            50% { box-shadow: 0 0 12px rgba(255, 51, 51, 0.9); transform: translate(-50%, -50%) scale(1.1); }
+        }
+
         /* Tactical Terminal Log */
         .terminal-panel {
             flex-grow: 1;
@@ -610,6 +727,13 @@
                     <h2>Operational Turn</h2>
                     <div id="status">White to move</div>
                 </div>
+
+                <div id="coach-panel" class="panel">
+                    <h2>Tactical Coach AI</h2>
+                    <div id="coach-content">
+                        <div class="coach-placeholder">&gt; Select a piece and hover over any highlighted legal move to activate real-time tactical analysis.</div>
+                    </div>
+                </div>
                 
                 <div class="panel">
                     <h2>Combatants</h2>
@@ -654,7 +778,7 @@
     <script type="module" src="./chess-ai.js"></script>
     <script type="module">
         import { getPieceColor, getLegalMoves, pieceUnicode, isKingInCheck, applyMove, initialGameState } from './chess-logic.js';
-        import { findBestMove } from './chess-ai.js';
+        import { findBestMove, analyzeMoves } from './chess-ai.js';
 
         const chessboard = document.getElementById('chessboard');
         const statusDisplay = document.getElementById('status');
@@ -710,6 +834,7 @@
         let currentPlayer = 'white'; // 'white' or 'black'
         const aiPlayer = 'black'; // AI plays as black
         let gameState = JSON.parse(JSON.stringify(initialGameState)); // Track en passant and castling rights
+        let currentMovesAnalysis = {}; // Store real-time coach grading
 
         let aiWorker = null;
 
@@ -771,6 +896,8 @@
                     square.dataset.row = r;
                     square.dataset.col = c;
                     square.addEventListener('click', () => handleSquareClick(r, c));
+                    square.addEventListener('mouseenter', () => handleSquareHover(r, c));
+                    square.addEventListener('mouseleave', () => handleSquareLeave(r, c));
 
                     const pieceChar = board[r][c];
                     if (pieceChar !== ' ') {
@@ -784,6 +911,44 @@
                 }
             }
             updateStatus();
+        }
+
+        function handleSquareHover(row, col) {
+            if (currentPlayer === aiPlayer) return; // Ignore during AI turn
+            
+            const analysis = currentMovesAnalysis[`${row},${col}`];
+            const coachContent = document.getElementById('coach-content');
+            const coachPanel = document.getElementById('coach-panel');
+            
+            if (analysis && coachContent && coachPanel) {
+                // Update coach panel colors
+                coachPanel.className = `panel ${analysis.color}`;
+                
+                // Set glowing layout content
+                coachContent.innerHTML = `
+                    <div class="coach-badge badge-${analysis.grade}">${analysis.title}</div>
+                    <div class="coach-explanation">&gt; ${analysis.explanation}</div>
+                    <div class="coach-score">
+                        <span>Position Value Change:</span>
+                        <span style="color: ${analysis.grade === 'green' ? '#00ff66' : (analysis.grade === 'yellow' ? '#ffcc00' : '#ff3333')}">${analysis.evalDiff >= 0 ? '+' : ''}${analysis.evalDiff} pawns</span>
+                    </div>
+                `;
+            }
+        }
+
+        function handleSquareLeave(row, col) {
+            const coachContent = document.getElementById('coach-content');
+            const coachPanel = document.getElementById('coach-panel');
+            
+            if (coachContent && coachPanel) {
+                if (!selectedPiece) {
+                    coachPanel.className = 'panel';
+                    coachContent.innerHTML = `<div class="coach-placeholder">&gt; Select a piece and hover over any highlighted legal move to activate real-time tactical analysis.</div>`;
+                } else {
+                    coachPanel.className = 'panel';
+                    coachContent.innerHTML = `<div class="coach-placeholder">&gt; Hover over any highlighted path to reveal tactical outcomes.</div>`;
+                }
+            }
         }
 
         function updateStatus() {
@@ -804,7 +969,17 @@
 
         function clearHighlights() {
             document.querySelectorAll('.square.selected').forEach(s => s.classList.remove('selected'));
-            document.querySelectorAll('.square.legal-move').forEach(s => s.classList.remove('legal-move', 'capture'));
+            document.querySelectorAll('.square.legal-move').forEach(s => {
+                s.classList.remove('legal-move', 'capture', 'coach-green', 'coach-yellow', 'coach-red');
+            });
+            
+            // Reset coach panel to default state
+            const coachContent = document.getElementById('coach-content');
+            const coachPanel = document.getElementById('coach-panel');
+            if (coachContent && coachPanel) {
+                coachPanel.className = 'panel';
+                coachContent.innerHTML = `<div class="coach-placeholder">&gt; Select a piece and hover over any highlighted legal move to activate real-time tactical analysis.</div>`;
+            }
         }
 
         function handleSquareClick(row, col) {
@@ -860,10 +1035,21 @@
             }
 
             const moves = getLegalMoves(board, pieceData.startRow, pieceData.startCol, currentPlayer, gameState);
+            
+            // Calculate grades and explanations for all legal moves of this selected piece!
+            currentMovesAnalysis = analyzeMoves(board, moves, currentPlayer, gameState);
+
             moves.forEach(move => {
                 const targetSquare = document.querySelector(`[data-row="${move.endRow}"][data-col="${move.endCol}"]`);
                 if (targetSquare) {
                     targetSquare.classList.add('legal-move');
+                    
+                    // Add color-coded class based on coach analysis!
+                    const analysis = currentMovesAnalysis[`${move.endRow},${move.endCol}`];
+                    if (analysis) {
+                        targetSquare.classList.add(analysis.color);
+                    }
+
                     if (move.isCapture) {
                         targetSquare.classList.add('capture');
                     }

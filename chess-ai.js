@@ -1,4 +1,4 @@
-import { getPieceColor, getLegalMoves, isKingInCheck, applyMove, initialGameState } from './chess-logic.js';
+import { getPieceColor, getLegalMoves, isKingInCheck, applyMove, initialGameState, isSquareAttacked, findKing } from './chess-logic.js';
 
 const PIECE_VALUES = {
     'P': 100, 'N': 320, 'B': 330, 'R': 500, 'Q': 900, 'K': 20000, // White pieces
@@ -82,29 +82,148 @@ const PST_TABLES = {
     'K': KING_PST
 };
 
-// Advanced evaluation incorporating material and piece-square tables
-export function evaluateBoard(board) {
+// Helper to determine friendly piece protection
+function isFriendlyDefended(board, row, col, color, gameState) {
+    const originalPiece = board[row][col];
+    // Temporarily replace with an opponent's pawn to bypass "cannot capture own piece" check in isValidMove
+    const opponentPawn = color === 'white' ? 'p' : 'P';
+    board[row][col] = opponentPawn;
+    const defended = isSquareAttacked(board, row, col, color, gameState);
+    board[row][col] = originalPiece; // restore
+    return defended;
+}
+
+// King safety evaluation based on pawn shield
+function evaluateKingSafety(board, kingRow, kingCol, color) {
+    let safetyScore = 0;
+    const direction = color === 'white' ? -1 : 1;
+    const pawnChar = color === 'white' ? 'P' : 'p';
+    
+    // King-side castled King safety
+    if (kingCol >= 5) {
+        const shieldCols = [kingCol - 1, kingCol, kingCol + 1].filter(c => c >= 0 && c < 8);
+        shieldCols.forEach(c => {
+            const r = kingRow + direction;
+            if (r >= 0 && r < 8) {
+                if (board[r][c] === pawnChar) {
+                    safetyScore += 40; // Pawn shield intact
+                } else if (r + direction >= 0 && r + direction < 8 && board[r + direction][c] === pawnChar) {
+                    safetyScore += 20; // Pawn pushed one square
+                } else {
+                    safetyScore -= 35; // Pawn shield broken/missing!
+                }
+            }
+        });
+    }
+    // Queen-side castled King safety
+    else if (kingCol <= 2) {
+        const shieldCols = [kingCol - 1, kingCol, kingCol + 1].filter(c => c >= 0 && c < 8);
+        shieldCols.forEach(c => {
+            const r = kingRow + direction;
+            if (r >= 0 && r < 8) {
+                if (board[r][c] === pawnChar) {
+                    safetyScore += 35;
+                } else if (r + direction >= 0 && r + direction < 8 && board[r + direction][c] === pawnChar) {
+                    safetyScore += 15;
+                } else {
+                    safetyScore -= 30;
+                }
+            }
+        });
+    }
+    
+    return safetyScore;
+}
+
+// Advanced evaluation incorporating material, PST, King safety, defended pieces, and hanging piece penalties
+export function evaluateBoard(board, gameState = initialGameState) {
     let score = 0;
+    
+    // Track kings' positions for king safety evaluation
+    let whiteKingPos = null;
+    let blackKingPos = null;
+
     for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
             const piece = board[r][c];
-            if (piece !== ' ') {
-                const value = PIECE_VALUES[piece];
-                score += value;
+            if (piece === ' ') continue;
 
-                const upperPiece = piece.toUpperCase();
-                const pstTable = PST_TABLES[upperPiece];
-                if (pstTable) {
-                    const isWhite = (piece === upperPiece);
-                    if (isWhite) {
-                        score += pstTable[r][c];
+            const pieceColor = getPieceColor(piece);
+            const upperPiece = piece.toUpperCase();
+            
+            // 1. Material Score
+            const value = PIECE_VALUES[piece];
+            score += value;
+
+            // 2. Positional Score (Piece-Square Table)
+            const pstTable = PST_TABLES[upperPiece];
+            if (pstTable) {
+                if (pieceColor === 'white') {
+                    score += pstTable[r][c];
+                } else {
+                    score -= pstTable[7 - r][c];
+                }
+            }
+
+            // Track Kings
+            if (upperPiece === 'K') {
+                if (pieceColor === 'white') whiteKingPos = [r, c];
+                else blackKingPos = [r, c];
+            }
+
+            // 3. Tactical / Defensive Safety (Only for non-King pieces)
+            if (upperPiece !== 'K') {
+                const opponentColor = pieceColor === 'white' ? 'black' : 'white';
+                
+                // Check if piece is attacked by opponent
+                const isAttacked = isSquareAttacked(board, r, c, opponentColor, gameState);
+                
+                if (isAttacked) {
+                    // Check if piece is defended by friendly pieces
+                    const isDefended = isFriendlyDefended(board, r, c, pieceColor, gameState);
+                    
+                    if (!isDefended) {
+                        // HANGING PIECE PENALTY: Huge penalty for leaving pieces completely hanging!
+                        const penalty = Math.abs(PIECE_VALUES[piece]) * 0.65; // Penalty is 65% of piece value
+                        if (pieceColor === 'white') {
+                            score -= penalty;
+                        } else {
+                            score += penalty;
+                        }
                     } else {
-                        score -= pstTable[7 - r][c];
+                        // Defended but attacked: check if opponent attacker is of lower value
+                        // To keep it simple and ultra-responsive, we apply a minor penalty for the pressure
+                        const penalty = Math.abs(PIECE_VALUES[piece]) * 0.15; // 15% pressure penalty
+                        if (pieceColor === 'white') {
+                            score -= penalty;
+                        } else {
+                            score += penalty;
+                        }
+                    }
+                } else {
+                    // Piece is safe: minor reward if it is defended (solid structure)
+                    const isDefended = isFriendlyDefended(board, r, c, pieceColor, gameState);
+                    if (isDefended) {
+                        const reward = Math.abs(PIECE_VALUES[piece]) * 0.05; // 5% solid defense reward
+                        if (pieceColor === 'white') {
+                            score += reward;
+                        } else {
+                            score -= reward;
+                        }
                     }
                 }
             }
         }
     }
+
+    // 4. King Safety Evaluation
+    if (whiteKingPos) {
+        score += evaluateKingSafety(board, whiteKingPos[0], whiteKingPos[1], 'white');
+    }
+    if (blackKingPos) {
+        score -= evaluateKingSafety(board, blackKingPos[0], blackKingPos[1], 'black');
+    }
+
     return score;
 }
 
@@ -199,7 +318,7 @@ function quiescence(board, alpha, beta, maximizingPlayer, aiColor, gameState) {
     nodesEvaluated++;
     
     // Normalize evaluation: positive is good for AI, negative is bad
-    const standPat = evaluateBoard(board) * (aiColor === 'white' ? 1 : -1);
+    const standPat = evaluateBoard(board, gameState) * (aiColor === 'white' ? 1 : -1);
     
     if (maximizingPlayer) {
         if (standPat >= beta) return beta;
@@ -407,4 +526,148 @@ export function findBestMove(board, aiColor, gameState = initialGameState, maxDe
     }
 
     return bestMove;
+}
+
+// Interactive Learning Coach moves analyzer
+export function analyzeMoves(board, moves, currentPlayerColor, gameState = initialGameState) {
+    const currentEval = evaluateBoard(board, gameState);
+    const analysisResults = {};
+
+    moves.forEach(move => {
+        // 1. Simulate the move
+        const { newBoard, newGameState } = applyMove(board, move, gameState);
+        
+        // 2. Perform a fast minimax search at depth 2 to see the future value
+        const moveValue = minimax(newBoard, 2, -Infinity, Infinity, false, currentPlayerColor, newGameState);
+        
+        // 3. Calculate evaluation difference relative to current board
+        // Current player wants to maximize their score.
+        // For white, high is good. For black, we already normalized so positive is always good for AI.
+        // But for the human (White), the evaluation is raw, so high is good.
+        // Let's adjust so that a positive diff always represents a good move!
+        let diff = moveValue - currentEval;
+        
+        let grade = 'yellow'; // default
+        let title = 'Inaccuracy';
+        let color = 'coach-yellow';
+        
+        if (diff >= -15) {
+            grade = 'green';
+            title = 'Excellent Move';
+            color = 'coach-green';
+        } else if (diff < -15 && diff >= -120) {
+            grade = 'yellow';
+            title = 'Inaccuracy';
+            color = 'coach-yellow';
+        } else {
+            grade = 'red';
+            title = 'Blunder / Mistake';
+            color = 'coach-red';
+        }
+        
+        // 4. Generate natural language explanation
+        const explanation = generateExplanation(board, newBoard, move, newGameState, currentPlayerColor, grade);
+        
+        analysisResults[`${move.endRow},${move.endCol}`] = {
+            grade,
+            title,
+            color,
+            evalDiff: (diff / 100).toFixed(2), // Convert to standard pawn units
+            explanation
+        };
+    });
+
+    return analysisResults;
+}
+
+function hasAnyLegalMoves(boardState, playerColor, gameState) {
+    for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+            const piece = boardState[r][c];
+            if (piece !== ' ' && getPieceColor(piece) === playerColor) {
+                const moves = getLegalMoves(boardState, r, c, playerColor, gameState);
+                if (moves.length > 0) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+function generateExplanation(board, newBoard, move, newGameState, playerColor, grade) {
+    const pieceChar = board[move.startRow][move.startCol];
+    const pieceName = getPieceName(pieceChar);
+    const opponentColor = playerColor === 'white' ? 'black' : 'white';
+    
+    const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+    const ranks = ['8', '7', '6', '5', '4', '3', '2', '1'];
+    const destSquare = `${files[move.endCol]}${ranks[move.endRow]}`;
+
+    // 1. Checkmate deliver
+    const opponentHasMoves = hasAnyLegalMoves(newBoard, opponentColor, newGameState);
+    const opponentInCheck = isKingInCheck(newBoard, opponentColor, newGameState);
+    if (!opponentHasMoves && opponentInCheck) {
+        return `💥 CHECKMATE! This move delivers immediate checkmate on ${destSquare} and wins the battle!`;
+    }
+
+    // 2. Castling
+    if (move.isCastling) {
+        return `🛡️ CASTLING! Secures your King in a safe bunker and activates your Rook for active combat.`;
+    }
+
+    // 3. Check deliver
+    if (opponentInCheck) {
+        return `⚔️ DELIVERS CHECK! Forces the opponent's King under direct fire, disrupting their tactical coordination.`;
+    }
+
+    // 4. Piece promotion
+    if (pieceChar.toUpperCase() === 'P' && (move.endRow === 0 || move.endRow === 7)) {
+        return `👑 PROMOTION! Promotes your brave Pawn into a dominant Queen on the back rank!`;
+    }
+
+    // 5. Hanging piece warning (Blunder)
+    const isDefended = isFriendlyDefended(newBoard, move.endRow, move.endCol, playerColor, newGameState);
+    const isAttacked = isSquareAttacked(newBoard, move.endRow, move.endCol, opponentColor, newGameState);
+    
+    if (isAttacked && !isDefended && grade === 'red') {
+        return `⚠️ BLUNDER! Leaves your ${pieceName} completely undefended and hanging on ${destSquare}. The opponent can capture it for free!`;
+    }
+
+    // 6. Capture moves
+    const capturedPiece = board[move.endRow][move.endCol];
+    if (capturedPiece !== ' ') {
+        const capturedName = getPieceName(capturedPiece);
+        if (grade === 'green') {
+            return `🎯 CAPTURE! Snipes the opponent's undefended or high-value ${capturedName} on ${destSquare}, securing a major material advantage!`;
+        }
+        return `Capture of the opponent's ${capturedName} on ${destSquare}. Be cautious of possible tactical counter-strikes.`;
+    }
+
+    // 7. Pushing King shield pawns
+    if (pieceChar.toUpperCase() === 'P' && move.startRow === 6 && playerColor === 'white') {
+        const kingPos = findKing(board, 'white');
+        if (kingPos && kingPos[0] === 7 && ((kingPos[1] >= 5 && move.startCol >= 5) || (kingPos[1] <= 2 && move.startCol <= 2))) {
+            return `⚠️ WEAKENS KING SHIELD! Pushing this pawn weakens the protective fortress around your castled King.`;
+        }
+    }
+
+    // 8. General positional moves
+    if (grade === 'green') {
+        return `📈 EXCELLENT MOVE! Develops your ${pieceName} to ${destSquare}, improving its positional activity and controlling critical squares.`;
+    }
+
+    if (grade === 'yellow') {
+        return `⚖️ SAFE MOVE. Moves the ${pieceName} to ${destSquare}. It is safe, but there might be more active positional opportunities available.`;
+    }
+
+    return `⚠️ RISK DETECTED. Moving the ${pieceName} to ${destSquare} weakens your position or concedes some control to the opponent.`;
+}
+
+function getPieceName(pieceChar) {
+    const names = {
+        'P': 'Pawn', 'N': 'Knight', 'B': 'Bishop', 'R': 'Rook', 'Q': 'Queen', 'K': 'King',
+        'p': 'Pawn', 'n': 'Knight', 'b': 'Bishop', 'r': 'Rook', 'q': 'Queen', 'k': 'King'
+    };
+    return names[pieceChar] || 'Piece';
 }
