@@ -513,6 +513,40 @@
             line-height: 1.4;
         }
 
+        /* ===== AI Last Move Highlight ===== */
+        .square.ai-move-from {
+            background-color: rgba(255, 0, 127, 0.18) !important;
+            box-shadow: inset 0 0 18px rgba(255, 0, 127, 0.55), 0 0 8px rgba(255, 0, 127, 0.3);
+            border: 1px solid rgba(255, 0, 127, 0.6) !important;
+            z-index: 2;
+        }
+
+        .square.ai-move-to {
+            background-color: rgba(255, 0, 127, 0.28) !important;
+            box-shadow: inset 0 0 22px rgba(255, 0, 127, 0.7), 0 0 14px rgba(255, 0, 127, 0.5);
+            border: 1px solid var(--neon-pink) !important;
+            z-index: 2;
+            animation: ai-land-pulse 2.5s ease-in-out infinite;
+        }
+
+        /* Small arrow badge on the TO square to make direction crystal-clear */
+        .square.ai-move-to::before {
+            content: '🤖';
+            position: absolute;
+            top: 2px;
+            right: 3px;
+            font-size: 11px;
+            opacity: 0.85;
+            pointer-events: none;
+            z-index: 10;
+            line-height: 1;
+        }
+
+        @keyframes ai-land-pulse {
+            0%, 100% { box-shadow: inset 0 0 18px rgba(255, 0, 127, 0.55), 0 0 8px rgba(255, 0, 127, 0.3); }
+            50% { box-shadow: inset 0 0 28px rgba(255, 0, 127, 0.85), 0 0 20px rgba(255, 0, 127, 0.65); }
+        }
+
         /* Color-coded move markers styling */
         .square.legal-move.coach-green::after {
             background-color: #00ff66 !important;
@@ -835,6 +869,7 @@
         const aiPlayer = 'black'; // AI plays as black
         let gameState = JSON.parse(JSON.stringify(initialGameState)); // Track en passant and castling rights
         let currentMovesAnalysis = {}; // Store real-time coach grading
+        let lastAIMove = null; // { startRow, startCol, endRow, endCol } – for last-move highlight
 
         let aiWorker = null;
 
@@ -972,6 +1007,9 @@
             document.querySelectorAll('.square.legal-move').forEach(s => {
                 s.classList.remove('legal-move', 'capture', 'coach-green', 'coach-yellow', 'coach-red');
             });
+            // NOTE: We deliberately do NOT remove ai-move-from/ai-move-to here so the
+            // indicator persists across the human's selection. It is cleared only when a
+            // new move starts (in applyAILastMoveHighlight).
             
             // Reset coach panel to default state
             const coachContent = document.getElementById('coach-content');
@@ -980,6 +1018,19 @@
                 coachPanel.className = 'panel';
                 coachContent.innerHTML = `<div class="coach-placeholder">&gt; Select a piece and hover over any highlighted legal move to activate real-time tactical analysis.</div>`;
             }
+        }
+
+        /** Clears old AI highlight then marks the new from/to squares. */
+        function applyAILastMoveHighlight(move) {
+            // Remove previous AI highlight
+            document.querySelectorAll('.square.ai-move-from, .square.ai-move-to').forEach(s => {
+                s.classList.remove('ai-move-from', 'ai-move-to');
+            });
+            if (!move) return;
+            const fromSq = document.querySelector(`[data-row="${move.startRow}"][data-col="${move.startCol}"]`);
+            const toSq   = document.querySelector(`[data-row="${move.endRow}"][data-col="${move.endCol}"]`);
+            if (fromSq) fromSq.classList.add('ai-move-from');
+            if (toSq)   toSq.classList.add('ai-move-to');
         }
 
         function handleSquareClick(row, col) {
@@ -1060,7 +1111,8 @@
         async function makeMove(move) {
             // Log move with piece info
             const moveNotation = getChessNotation(move);
-            const playerColorClass = getPieceColor(move.piece) === 'white' ? 'white-move' : 'black-move';
+            const isAIMove = getPieceColor(move.piece) === aiPlayer;
+            const playerColorClass = isAIMove ? 'black-move' : 'white-move';
             addLog(moveNotation, playerColorClass);
 
             // Apply move to the board
@@ -1071,6 +1123,14 @@
             selectedPiece = null;
             clearHighlights();
             initializeBoard(); // Re-render the board
+
+            // ── AI last-move indicator ──────────────────────────────────────
+            if (isAIMove) {
+                lastAIMove = move;
+            }
+            // Always re-apply the indicator after board re-render
+            applyAILastMoveHighlight(lastAIMove);
+            // ───────────────────────────────────────────────────────────────
 
             // Switch player
             currentPlayer = (currentPlayer === 'white' ? 'black' : 'white');

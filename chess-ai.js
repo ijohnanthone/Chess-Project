@@ -135,6 +135,38 @@ function evaluateKingSafety(board, kingRow, kingCol, color) {
     return safetyScore;
 }
 
+// Detects whether `attackingColor` has an immediate forced checkmate in 1
+function hasMateThreat(board, attackingColor, gameState) {
+    const defendingColor = attackingColor === 'white' ? 'black' : 'white';
+    for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+            const piece = board[r][c];
+            if (piece === ' ' || getPieceColor(piece) !== attackingColor) continue;
+            const moves = getLegalMoves(board, r, c, attackingColor, gameState);
+            for (const m of moves) {
+                const { newBoard, newGameState } = applyMove(board, m, gameState);
+                // Check if the defending king is now in check AND has no legal escapes
+                if (isKingInCheck(newBoard, defendingColor, newGameState)) {
+                    let hasMoves = false;
+                    outer: for (let rr = 0; rr < 8; rr++) {
+                        for (let cc = 0; cc < 8; cc++) {
+                            const p = newBoard[rr][cc];
+                            if (p !== ' ' && getPieceColor(p) === defendingColor) {
+                                if (getLegalMoves(newBoard, rr, cc, defendingColor, newGameState).length > 0) {
+                                    hasMoves = true;
+                                    break outer;
+                                }
+                            }
+                        }
+                    }
+                    if (!hasMoves) return true; // Mate in 1 found!
+                }
+            }
+        }
+    }
+    return false;
+}
+
 // Advanced evaluation incorporating material, PST, King safety, defended pieces, and hanging piece penalties
 export function evaluateBoard(board, gameState = initialGameState) {
     let score = 0;
@@ -222,6 +254,15 @@ export function evaluateBoard(board, gameState = initialGameState) {
     }
     if (blackKingPos) {
         score -= evaluateKingSafety(board, blackKingPos[0], blackKingPos[1], 'black');
+    }
+
+    // 5. Mate-threat Detection — strongly penalise positions where the opponent has a forced
+    //    checkmate in 1. This prevents the AI from ignoring the human's mating plans.
+    if (hasMateThreat(board, 'white', gameState)) {
+        score -= 350000; // White can deliver checkmate next move — catastrophic for black (AI)
+    }
+    if (hasMateThreat(board, 'black', gameState)) {
+        score += 350000; // Black (AI) can deliver checkmate next move — great for AI
     }
 
     return score;
