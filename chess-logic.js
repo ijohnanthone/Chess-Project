@@ -5,6 +5,16 @@ export const pieceUnicode = {
     ' ': ''
 };
 
+export const initialGameState = {
+    castlingRights: {
+        whiteKingSide: true,
+        whiteQueenSide: true,
+        blackKingSide: true,
+        blackQueenSide: true,
+    },
+    enPassantTarget: null, // [row, col] of the square behind the jumped pawn
+};
+
 export function getPieceColor(pieceChar) {
     if (pieceChar === ' ') return null;
     return pieceChar === pieceChar.toUpperCase() ? 'white' : 'black';
@@ -27,7 +37,7 @@ export function isPathBlocked(board, startRow, startCol, endRow, endCol) {
     return false;
 }
 
-export function isValidMove(board, startRow, startCol, endRow, endCol, pieceChar, currentPlayerColor) {
+export function isValidMove(board, startRow, startCol, endRow, endCol, pieceChar, currentPlayerColor, gameState) {
     const pieceColor = getPieceColor(pieceChar);
     const targetPieceChar = board[endRow][endCol];
     const targetPieceColor = getPieceColor(targetPieceChar);
@@ -92,7 +102,7 @@ export function isValidMove(board, startRow, startCol, endRow, endCol, pieceChar
     }
 }
 
-export function isKingInCheck(board, color) {
+export function isKingInCheck(board, color, gameState) {
     let kingRow = -1;
     let kingCol = -1;
     const kingChar = color === 'white' ? 'K' : 'k';
@@ -117,7 +127,10 @@ export function isKingInCheck(board, color) {
         for (let c = 0; c < 8; c++) {
             const pieceChar = board[r][c];
             if (pieceChar !== ' ' && getPieceColor(pieceChar) === opponentColor) {
-                if (isValidMove(board, r, c, kingRow, kingCol, pieceChar, opponentColor)) {
+                // When checking if the king is in check, we pass a dummy gameState
+                // because the attack does not depend on castling/en passant rights.
+                // However, isValidMove still expects it.
+                if (isValidMove(board, r, c, kingRow, kingCol, pieceChar, opponentColor, initialGameState)) {
                     return true;
                 }
             }
@@ -126,13 +139,15 @@ export function isKingInCheck(board, color) {
     return false;
 }
 
-function simulateAndCheck(board, startRow, startCol, endRow, endCol, color) {
+function simulateAndCheck(board, startRow, startCol, endRow, endCol, color, gameState) {
     const newBoard = board.map(row => [...row]);
+    const newGameState = { ...gameState }; // shallow copy for simulation
+
     const pieceChar = newBoard[startRow][startCol];
     newBoard[endRow][endCol] = pieceChar;
     newBoard[startRow][startCol] = ' ';
 
-    // Simplified Pawn promotion in simulation
+    // Simplified Pawn promotion in simulation for check detection
     if (pieceChar.toUpperCase() === 'P') {
         if (color === 'white' && endRow === 0) {
             newBoard[endRow][endCol] = 'Q';
@@ -141,10 +156,10 @@ function simulateAndCheck(board, startRow, startCol, endRow, endCol, color) {
         }
     }
 
-    return isKingInCheck(newBoard, color);
+    return isKingInCheck(newBoard, color, newGameState);
 }
 
-export function getLegalMoves(board, row, col, currentPlayerColor) {
+export function getLegalMoves(board, row, col, currentPlayerColor, gameState) {
     const legalMoves = [];
     const pieceChar = board[row][col];
     if (pieceChar === ' ' || getPieceColor(pieceChar) !== currentPlayerColor) {
@@ -153,8 +168,8 @@ export function getLegalMoves(board, row, col, currentPlayerColor) {
 
     for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
-            if (isValidMove(board, row, col, r, c, pieceChar, currentPlayerColor)) {
-                if (!simulateAndCheck(board, row, col, r, c, currentPlayerColor)) {
+            if (isValidMove(board, row, col, r, c, pieceChar, currentPlayerColor, gameState)) {
+                if (!simulateAndCheck(board, row, col, r, c, currentPlayerColor, gameState)) {
                     const targetPieceChar = board[r][c];
                     const isCapture = targetPieceChar !== ' ';
                     legalMoves.push({ startRow: row, startCol: col, endRow: r, endCol: c, isCapture: isCapture, piece: pieceChar });
