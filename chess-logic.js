@@ -159,38 +159,6 @@ export function isKingInCheck(board, color, gameState) {
     return isSquareAttacked(board, kingRow, kingCol, opponentColor, gameState);
 }
 
-    // Find King
-    for (let r = 0; r < 8; r++) {
-        for (let c = 0; c < 8; c++) {
-            if (board[r][c] === kingChar) {
-                kingRow = r;
-                kingCol = c;
-                break;
-            }
-        }
-        if (kingRow !== -1) break;
-    }
-
-    if (kingRow === -1) return false;
-
-    const opponentColor = color === 'white' ? 'black' : 'white';
-
-    for (let r = 0; r < 8; r++) {
-        for (let c = 0; c < 8; c++) {
-            const pieceChar = board[r][c];
-            if (pieceChar !== ' ' && getPieceColor(pieceChar) === opponentColor) {
-                // When checking if the king is in check, we pass a dummy gameState
-                // because the attack does not depend on castling/en passant rights.
-                // However, isValidMove still expects it.
-                if (isValidMove(board, r, c, kingRow, kingCol, pieceChar, opponentColor, initialGameState)) {
-                    return true;
-                }
-            }
-        }
-    }
-    return false;
-}
-
 // Function to apply a move and return the new board and game state
 export function applyMove(board, move, currentGameState) {
     const newBoard = board.map(row => [...row]);
