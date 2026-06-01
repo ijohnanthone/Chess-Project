@@ -653,8 +653,8 @@
     <script type="module" src="./chess-logic.js"></script>
     <script type="module" src="./chess-ai.js"></script>
     <script type="module">
-        import { getPieceColor, getLegalMoves, pieceUnicode, isKingInCheck } from './chess-logic.js';
-        import { findBestMove, applyMove } from './chess-ai.js';
+        import { getPieceColor, getLegalMoves, pieceUnicode, isKingInCheck, applyMove, initialGameState } from './chess-logic.js';
+        import { findBestMove } from './chess-ai.js';
 
         const chessboard = document.getElementById('chessboard');
         const statusDisplay = document.getElementById('status');
@@ -683,7 +683,7 @@
                 for (let c = 0; c < 8; c++) {
                     const piece = boardState[r][c];
                     if (piece !== ' ' && getPieceColor(piece) === playerColor) {
-                        const moves = getLegalMoves(boardState, r, c, playerColor);
+                        const moves = getLegalMoves(boardState, r, c, playerColor, gameState);
                         if (moves.length > 0) {
                             return true;
                         }
@@ -709,6 +709,38 @@
         let selectedPiece = null; // { piece: 'P', startRow: 6, startCol: 0 }
         let currentPlayer = 'white'; // 'white' or 'black'
         const aiPlayer = 'black'; // AI plays as black
+        let gameState = JSON.parse(JSON.stringify(initialGameState)); // Track en passant and castling rights
+
+        let aiWorker = null;
+
+        function initWorker() {
+            if (window.Worker) {
+                // Initialize the ES module worker
+                aiWorker = new Worker('./chess-worker.js', { type: 'module' });
+                
+                aiWorker.onmessage = function (e) {
+                    const data = e.data;
+                    if (data.status === 'searching') {
+                        statusDisplay.innerHTML = `<span class="neon-text-pink">AI Calc (D:${data.depth} | N:${data.nodes.toLocaleString()}) <span class="neon-spinner"></span></span>`;
+                        blackStatus.textContent = `THINKING (D:${data.depth} | N:${data.nodes.toLocaleString()})`;
+                    } else if (data.status === 'complete') {
+                        const { bestMove, depth, nodes, timeSpent } = data;
+                        if (bestMove) {
+                            addLog(`AI Core: ${getChessNotation(bestMove)} (Depth: ${depth} | Nodes: ${nodes.toLocaleString()} | NPS: ${Math.round(nodes / (timeSpent / 1000 || 0.001)).toLocaleString()})`, 'black-move');
+                            makeMove(bestMove);
+                        } else {
+                            addLog("AI Core: No legal moves found.", "alert");
+                            statusDisplay.innerHTML = `<span class="neon-text-pink">GAME OVER</span>`;
+                        }
+                    }
+                };
+            } else {
+                console.warn("Web Workers are not supported in this browser. Falling back to main-thread search.");
+            }
+        }
+
+        // Initialize the Web Worker
+        initWorker();
 
         function addLog(message, type = 'system') {
             const entry = document.createElement('div');
@@ -794,7 +826,7 @@
                     highlightMoves(selectedPiece);
                 } else {
                     // Attempt to move or capture
-                    const currentLegalMoves = getLegalMoves(board, selectedPiece.startRow, selectedPiece.startCol, currentPlayer);
+                    const currentLegalMoves = getLegalMoves(board, selectedPiece.startRow, selectedPiece.startCol, currentPlayer, gameState);
                     const matchedMove = currentLegalMoves.find(move =>
                         move.startRow === selectedPiece.startRow &&
                         move.startCol === selectedPiece.startCol &&
@@ -827,7 +859,7 @@
                 startSquare.classList.add('selected');
             }
 
-            const moves = getLegalMoves(board, pieceData.startRow, pieceData.startCol, currentPlayer);
+            const moves = getLegalMoves(board, pieceData.startRow, pieceData.startCol, currentPlayer, gameState);
             moves.forEach(move => {
                 const targetSquare = document.querySelector(`[data-row="${move.endRow}"][data-col="${move.endCol}"]`);
                 if (targetSquare) {
@@ -846,8 +878,9 @@
             addLog(moveNotation, playerColorClass);
 
             // Apply move to the board
-            const { newBoard } = applyMove(board, move); // Use applyMove from AI for consistency
+            const { newBoard, newGameState } = applyMove(board, move, gameState);
             board = newBoard; // Update the main board
+            gameState = newGameState; // Update the game state!
 
             selectedPiece = null;
             clearHighlights();
@@ -859,7 +892,7 @@
 
             // Check for Endgame
             if (!hasAnyLegalMoves(board, currentPlayer)) {
-                const inCheck = isKingInCheck(board, currentPlayer);
+                const inCheck = isKingInCheck(board, currentPlayer, gameState);
                 if (inCheck) {
                     const winningColor = currentPlayer === 'white' ? 'Black' : 'White';
                     showGameOverOverlay(`CHECKMATE - ${winningColor.toUpperCase()} Wins!`);
@@ -877,28 +910,26 @@
 
         async function makeAIMove() {
             statusDisplay.innerHTML = `<span class="neon-text-pink">AI Calculating <span class="neon-spinner"></span></span>`;
-            // Delay to make AI thinking visible
-            await new Promise(resolve => setTimeout(resolve, 800));
-
-            const bestMove = findBestMove(board, aiPlayer);
-
-            if (bestMove) {
-                makeMove(bestMove); // AI makes its move
+            
+            if (aiWorker) {
+                // Post board state and game state to Web Worker
+                aiWorker.postMessage({ board, aiColor: aiPlayer, gameState });
             } else {
-                console.log("AI found no legal moves. Game over or stalemate!");
-                addLog("AI Core: No legal moves possible. Battle Concluded.", "alert");
-                statusDisplay.innerHTML = `<span class="neon-text-pink">GAME OVER</span>`;
+                // Fallback to synchronous calculation on main thread if workers are blocked
+                await new Promise(resolve => setTimeout(resolve, 300));
+                const bestMove = findBestMove(board, aiPlayer, gameState, 3); // Lower depth to prevent UI freezing
+                if (bestMove) {
+                    addLog(`AI Core (Fallback): ${getChessNotation(bestMove)}`, 'black-move');
+                    makeMove(bestMove);
+                } else {
+                    addLog("AI Core: No legal moves possible. Battle Concluded.", "alert");
+                    statusDisplay.innerHTML = `<span class="neon-text-pink">GAME OVER</span>`;
+                }
             }
         }
 
         // Initialize the board when the script loads
         initializeBoard();
-        // If AI starts, trigger AI move (e.g., if AI is white)
-        // In this setup, AI is black, so white (human) moves first.
-        // If AI was white:
-        // if (currentPlayer === aiPlayer) {
-        //     makeAIMove();
-        // }
 
     </script>
 </body>

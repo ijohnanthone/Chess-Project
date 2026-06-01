@@ -1,4 +1,4 @@
-import { getPieceColor, getLegalMoves, isKingInCheck } from './chess-logic.js';
+import { getPieceColor, getLegalMoves, isKingInCheck, applyMove, initialGameState } from './chess-logic.js';
 
 const PIECE_VALUES = {
     'P': 100, 'N': 320, 'B': 330, 'R': 500, 'Q': 900, 'K': 20000, // White pieces
@@ -136,47 +136,143 @@ export function scoreMove(board, move, currentPlayerColor) {
     return score;
 }
 
-// Applies a move to a board and returns the new board state
-export function applyMove(board, move) {
-    const newBoard = board.map(row => [...row]); // Deep copy
+// Transposition Table for caching positions
+const transpositionTable = new Map();
 
-    newBoard[move.endRow][move.endCol] = newBoard[move.startRow][move.startCol];
-    newBoard[move.startRow][move.startCol] = ' ';
+// Zobrist Hashing variables
+let zobristTable = [];
+let zobristInitialized = false;
 
-    // Pawn promotion (simplified to Queen)
-    const pieceChar = newBoard[move.endRow][move.endCol];
-    const pieceColor = getPieceColor(pieceChar);
-    if (pieceChar.toUpperCase() === 'P') {
-        if (pieceColor === 'white' && move.endRow === 0) {
-            newBoard[move.endRow][move.endCol] = 'Q';
-        } else if (pieceColor === 'black' && move.endRow === 7) {
-            newBoard[move.endRow][move.endCol] = 'q';
+function initZobrist() {
+    if (zobristInitialized) return;
+    zobristTable = [];
+    const pieces = ['P', 'N', 'B', 'R', 'Q', 'K', 'p', 'n', 'b', 'r', 'q', 'k', ' '];
+    for (let r = 0; r < 8; r++) {
+        zobristTable[r] = [];
+        for (let c = 0; c < 8; c++) {
+            zobristTable[r][c] = {};
+            pieces.forEach(p => {
+                // Generate a random 32-bit integer
+                zobristTable[r][c][p] = Math.floor(Math.random() * 0xFFFFFFFF);
+            });
         }
     }
-    return { newBoard };
+    zobristInitialized = true;
 }
 
-// Minimax algorithm with alpha-beta pruning
-export function minimax(board, depth, alpha, beta, maximizingPlayer, aiColor) {
+function computeHash(board) {
+    initZobrist();
+    let hash = 0;
+    for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+            const piece = board[r][c];
+            hash ^= zobristTable[r][c][piece];
+        }
+    }
+    return hash;
+}
+
+// Track evaluated nodes for stats reporting
+let nodesEvaluated = 0;
+
+// Helper to filter and return capture moves
+function getCaptureMoves(board, color, gameState) {
+    const captureMoves = [];
+    for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+            const piece = board[r][c];
+            if (piece !== ' ' && getPieceColor(piece) === color) {
+                const moves = getLegalMoves(board, r, c, color, gameState);
+                for (const m of moves) {
+                    if (m.isCapture) {
+                        captureMoves.push(m);
+                    }
+                }
+            }
+        }
+    }
+    return captureMoves;
+}
+
+// Quiescence Search to avoid the horizon effect
+function quiescence(board, alpha, beta, maximizingPlayer, aiColor, gameState) {
+    nodesEvaluated++;
+    
+    // Normalize evaluation: positive is good for AI, negative is bad
+    const standPat = evaluateBoard(board) * (aiColor === 'white' ? 1 : -1);
+    
+    if (maximizingPlayer) {
+        if (standPat >= beta) return beta;
+        if (standPat > alpha) alpha = standPat;
+        
+        let captures = getCaptureMoves(board, aiColor, gameState);
+        captures.sort((a, b) => scoreMove(board, b, aiColor) - scoreMove(board, a, aiColor));
+        
+        for (const move of captures) {
+            const { newBoard, newGameState } = applyMove(board, move, gameState);
+            const val = quiescence(newBoard, alpha, beta, false, aiColor, newGameState);
+            if (val >= beta) return beta;
+            if (val > alpha) alpha = val;
+        }
+        return alpha;
+    } else {
+        if (standPat <= alpha) return alpha;
+        if (standPat < beta) beta = standPat;
+        
+        const opponentColor = aiColor === 'white' ? 'black' : 'white';
+        let captures = getCaptureMoves(board, opponentColor, gameState);
+        captures.sort((a, b) => scoreMove(board, b, opponentColor) - scoreMove(board, a, opponentColor));
+        
+        for (const move of captures) {
+            const { newBoard, newGameState } = applyMove(board, move, gameState);
+            const val = quiescence(newBoard, alpha, beta, true, aiColor, newGameState);
+            if (val <= alpha) return alpha;
+            if (val < beta) beta = val;
+        }
+        return beta;
+    }
+}
+
+// Minimax algorithm with alpha-beta pruning and transposition table
+export function minimax(board, depth, alpha, beta, maximizingPlayer, aiColor, gameState = initialGameState, startTime = 0, timeLimit = 2000) {
+    nodesEvaluated++;
+
+    // Check time limit periodically to stop search early
+    if (nodesEvaluated % 2048 === 0 && startTime > 0) {
+        if (Date.now() - startTime > timeLimit) {
+            return maximizingPlayer ? -Infinity : Infinity;
+        }
+    }
+
     if (depth === 0) {
-        return evaluateBoard(board);
+        return quiescence(board, alpha, beta, maximizingPlayer, aiColor, gameState);
     }
 
     const currentPlayerColor = maximizingPlayer ? aiColor : (aiColor === 'white' ? 'black' : 'white');
+    
+    // Transposition Table lookup
+    const boardHash = computeHash(board);
+    const ttEntry = transpositionTable.get(boardHash);
+    if (ttEntry && ttEntry.depth >= depth) {
+        if (ttEntry.flag === 0) return ttEntry.value; // EXACT
+        if (ttEntry.flag === 1 && ttEntry.value <= alpha) return alpha; // ALPHA
+        if (ttEntry.flag === 2 && ttEntry.value >= beta) return beta; // BETA
+    }
+
     let allPossibleMoves = [];
     for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
-            allPossibleMoves = allPossibleMoves.concat(getLegalMoves(board, r, c, currentPlayerColor));
+            allPossibleMoves = allPossibleMoves.concat(getLegalMoves(board, r, c, currentPlayerColor, gameState));
         }
     }
 
     if (allPossibleMoves.length === 0) {
-        const inCheck = isKingInCheck(board, currentPlayerColor);
+        const inCheck = isKingInCheck(board, currentPlayerColor, gameState);
         if (inCheck) {
-            // Checkmate: return very high/low score depending on which player is checkmated
+            // Checkmate: return very bad score for maximizing player, good score for minimizing player
             return maximizingPlayer ? (-500000 - depth) : (500000 + depth);
         } else {
-            // Stalemate: return neutral score
+            // Stalemate: neutral score
             return 0;
         }
     }
@@ -184,55 +280,131 @@ export function minimax(board, depth, alpha, beta, maximizingPlayer, aiColor) {
     // Sort moves to evaluate high-impact moves first
     allPossibleMoves.sort((a, b) => scoreMove(board, b, currentPlayerColor) - scoreMove(board, a, currentPlayerColor));
 
+    let bestValue = maximizingPlayer ? -Infinity : Infinity;
+    let bestMove = null;
+
     if (maximizingPlayer) {
-        let maxEval = -Infinity;
         for (const move of allPossibleMoves) {
-            const { newBoard } = applyMove(board, move);
-            const evaluation = minimax(newBoard, depth - 1, alpha, beta, false, aiColor);
-            maxEval = Math.max(maxEval, evaluation);
-            alpha = Math.max(alpha, maxEval);
+            const { newBoard, newGameState } = applyMove(board, move, gameState);
+            const evaluation = minimax(newBoard, depth - 1, alpha, beta, false, aiColor, newGameState, startTime, timeLimit);
+            
+            if (evaluation > bestValue) {
+                bestValue = evaluation;
+                bestMove = move;
+            }
+            alpha = Math.max(alpha, bestValue);
             if (beta <= alpha) {
                 break; // Alpha-beta pruning
             }
         }
-        return maxEval;
+        
+        // Save to Transposition Table
+        let flag = 0; // EXACT
+        if (bestValue <= alpha) flag = 1; // ALPHA
+        else if (bestValue >= beta) flag = 2; // BETA
+        transpositionTable.set(boardHash, { depth, value: bestValue, flag, bestMove });
+        
+        return bestValue;
     } else {
-        let minEval = Infinity;
         for (const move of allPossibleMoves) {
-            const { newBoard } = applyMove(board, move);
-            const evaluation = minimax(newBoard, depth - 1, alpha, beta, true, aiColor);
-            minEval = Math.min(minEval, evaluation);
-            beta = Math.min(beta, minEval);
+            const { newBoard, newGameState } = applyMove(board, move, gameState);
+            const evaluation = minimax(newBoard, depth - 1, alpha, beta, true, aiColor, newGameState, startTime, timeLimit);
+            
+            if (evaluation < bestValue) {
+                bestValue = evaluation;
+                bestMove = move;
+            }
+            beta = Math.min(beta, bestValue);
             if (beta <= alpha) {
                 break; // Alpha-beta pruning
             }
         }
-        return minEval;
+        
+        // Save to Transposition Table
+        let flag = 0; // EXACT
+        if (bestValue <= alpha) flag = 1; // ALPHA
+        else if (bestValue >= beta) flag = 2; // BETA
+        transpositionTable.set(boardHash, { depth, value: bestValue, flag, bestMove });
+        
+        return bestValue;
     }
 }
 
-export function findBestMove(board, aiColor, depth = 4) {
+export function findBestMove(board, aiColor, gameState = initialGameState, maxDepth = 6) {
+    const startTime = Date.now();
+    const timeLimit = 2000; // 2 seconds search limit
     let bestMove = null;
-    let bestValue = -Infinity; // AI aims to maximize its score (positive for AI, negative for opponent)
-    const currentPlayerColor = aiColor;
+    nodesEvaluated = 0;
+
+    transpositionTable.clear();
 
     let allPossibleMoves = [];
     for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
-            allPossibleMoves = allPossibleMoves.concat(getLegalMoves(board, r, c, currentPlayerColor));
+            allPossibleMoves = allPossibleMoves.concat(getLegalMoves(board, r, c, aiColor, gameState));
         }
     }
 
-    // Sort moves to speed up the root level search and cut off bad branches instantly
-    allPossibleMoves.sort((a, b) => scoreMove(board, b, currentPlayerColor) - scoreMove(board, a, currentPlayerColor));
+    if (allPossibleMoves.length === 0) return null;
 
-    for (const move of allPossibleMoves) {
-        const { newBoard } = applyMove(board, move);
-        const moveValue = minimax(newBoard, depth - 1, -Infinity, Infinity, false, aiColor); // False because next player is opponent
-        if (moveValue > bestValue) {
-            bestValue = moveValue;
-            bestMove = move;
+    // Initial Move Ordering
+    allPossibleMoves.sort((a, b) => scoreMove(board, b, aiColor) - scoreMove(board, a, aiColor));
+
+    // Iterative Deepening Search
+    for (let currentDepth = 1; currentDepth <= maxDepth; currentDepth++) {
+        if (Date.now() - startTime > timeLimit) {
+            break;
+        }
+
+        let bestValue = -Infinity;
+        let depthBestMove = null;
+
+        for (const move of allPossibleMoves) {
+            const { newBoard, newGameState } = applyMove(board, move, gameState);
+            const moveValue = minimax(newBoard, currentDepth - 1, -Infinity, Infinity, false, aiColor, newGameState, startTime, timeLimit);
+            
+            if (Date.now() - startTime > timeLimit && bestMove !== null) {
+                break; // Ignore partial/incomplete search results on timeout
+            }
+
+            if (moveValue > bestValue) {
+                bestValue = moveValue;
+                depthBestMove = move;
+            }
+        }
+
+        if (depthBestMove) {
+            bestMove = depthBestMove;
+            
+            // Move Ordering Enhancement: prioritize the best move found in subsequent searches
+            const idx = allPossibleMoves.indexOf(bestMove);
+            if (idx > 0) {
+                allPossibleMoves.splice(idx, 1);
+                allPossibleMoves.unshift(bestMove);
+            }
+        }
+
+        // Post status updates to Web Worker if active
+        if (typeof self !== 'undefined' && typeof self.postMessage === 'function') {
+            self.postMessage({
+                status: 'searching',
+                depth: currentDepth,
+                nodes: nodesEvaluated,
+                timeSpent: Date.now() - startTime
+            });
         }
     }
+
+    // Report final results to worker
+    if (typeof self !== 'undefined' && typeof self.postMessage === 'function') {
+        self.postMessage({
+            status: 'complete',
+            bestMove,
+            depth: maxDepth,
+            nodes: nodesEvaluated,
+            timeSpent: Date.now() - startTime
+        });
+    }
+
     return bestMove;
 }

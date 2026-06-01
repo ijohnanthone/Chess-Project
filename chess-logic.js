@@ -37,7 +37,7 @@ export function isPathBlocked(board, startRow, startCol, endRow, endCol) {
     return false;
 }
 
-export function isValidMove(board, startRow, startCol, endRow, endCol, pieceChar, currentPlayerColor, gameState) {
+export function isValidMove(board, startRow, startCol, endRow, endCol, pieceChar, currentPlayerColor, gameState = initialGameState) {
     const pieceColor = getPieceColor(pieceChar);
     const targetPieceChar = board[endRow][endCol];
     const targetPieceColor = getPieceColor(targetPieceChar);
@@ -134,7 +134,7 @@ export function findKing(board, color) {
 }
 
 // Checks if a square is attacked by the opponent
-export function isSquareAttacked(board, row, col, attackerColor, gameState) {
+export function isSquareAttacked(board, row, col, attackerColor, gameState = initialGameState) {
     for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
             const pieceChar = board[r][c];
@@ -149,7 +149,7 @@ export function isSquareAttacked(board, row, col, attackerColor, gameState) {
     return false;
 }
 
-export function isKingInCheck(board, color, gameState) {
+export function isKingInCheck(board, color, gameState = initialGameState) {
     const kingPos = findKing(board, color);
     if (!kingPos) return false; // Should not happen
 
@@ -160,7 +160,7 @@ export function isKingInCheck(board, color, gameState) {
 }
 
 // Function to apply a move and return the new board and game state
-export function applyMove(board, move, currentGameState) {
+export function applyMove(board, move, currentGameState = initialGameState) {
     const newBoard = board.map(row => [...row]);
     const newGameState = JSON.parse(JSON.stringify(currentGameState)); // Deep copy for immutability
 
@@ -237,11 +237,17 @@ export function applyMove(board, move, currentGameState) {
         }
     }
 
+    // If a Rook is captured on its starting square, the opponent loses that castling right
+    if (move.endRow === 7 && move.endCol === 0) newGameState.castlingRights.whiteQueenSide = false;
+    if (move.endRow === 7 && move.endCol === 7) newGameState.castlingRights.whiteKingSide = false;
+    if (move.endRow === 0 && move.endCol === 0) newGameState.castlingRights.blackQueenSide = false;
+    if (move.endRow === 0 && move.endCol === 7) newGameState.castlingRights.blackKingSide = false;
+
     return { newBoard, newGameState };
 }
 
 // Helper functions for castling conditions
-function canCastleKingSide(board, color, gameState) {
+function canCastleKingSide(board, color, gameState = initialGameState) {
     const row = color === 'white' ? 7 : 0;
     const kingChar = color === 'white' ? 'K' : 'k';
     const rookChar = color === 'white' ? 'R' : 'r';
@@ -261,7 +267,7 @@ function canCastleKingSide(board, color, gameState) {
     return true;
 }
 
-function canCastleQueenSide(board, color, gameState) {
+function canCastleQueenSide(board, color, gameState = initialGameState) {
     const row = color === 'white' ? 7 : 0;
     const kingChar = color === 'white' ? 'K' : 'k';
     const rookChar = color === 'white' ? 'R' : 'r';
@@ -289,7 +295,7 @@ function simulateAndCheck(board, move, color, gameState) {
 }
 
 
-export function getLegalMoves(board, row, col, currentPlayerColor, gameState) {
+export function getLegalMoves(board, row, col, currentPlayerColor, gameState = initialGameState) {
     const legalMoves = [];
     const pieceChar = board[row][col];
     if (pieceChar === ' ' || getPieceColor(pieceChar) !== currentPlayerColor) {
